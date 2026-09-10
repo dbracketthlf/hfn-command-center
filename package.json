@@ -1,0 +1,8 @@
+{
+  "name": "hfn-command-center",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": { "start": "node server.mjs", "test": "node --test", "db:migrate": "node scripts/migrate.mjs" },
+  "dependencies": { "pg": "^8.16.3" }
+}

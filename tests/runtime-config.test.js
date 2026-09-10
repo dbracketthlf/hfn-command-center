@@ -1,0 +1,3 @@
+import test from 'node:test'; import assert from 'node:assert/strict'; import { loadRuntimeConfig } from '../src/config/runtime.js';
+test('production startup fails clearly without database and webhook secret',()=>assert.throws(()=>loadRuntimeConfig({NODE_ENV:'production'}),/DATABASE_URL, ARIVE_WEBHOOK_SECRET/));
+test('production startup accepts required configuration and rejects demo mode',()=>{assert.equal(loadRuntimeConfig({NODE_ENV:'production',DATABASE_URL:'postgres://example',ARIVE_WEBHOOK_SECRET:'secret'}).production,true);assert.throws(()=>loadRuntimeConfig({NODE_ENV:'production',DATABASE_URL:'postgres://example',ARIVE_WEBHOOK_SECRET:'secret',HFN_DEMO_MODE:'true'}),/HFN_DEMO_MODE/);});

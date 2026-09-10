@@ -1,0 +1,15 @@
+import test from 'node:test'; import assert from 'node:assert/strict';
+import { addBusinessHours, dueAt, slaState, laterOf } from '../src/domain/sla.js';
+const hfn = { businessStart: { hour: 8, minute: 30 }, businessEnd: { hour: 17, minute: 0 }, workdays: [1,2,3,4,5], holidays: [] };
+const local = (y,m,d,h,min=0) => new Date(y,m-1,d,h,min,0,0);
+const assertLocal = (date, day, hour, minute) => { assert.equal(date.getDate(), day); assert.equal(date.getHours(), hour); assert.equal(date.getMinutes(), minute); };
+test('Monday 8:30 AM plus 24 business hours is Wednesday 3:30 PM', () => assertLocal(addBusinessHours(local(2026,9,14,8,30),24,hfn),16,15,30));
+test('Friday start excludes the weekend', () => assertLocal(addBusinessHours(local(2026,9,11,8,30),24,hfn),15,15,30));
+test('configured federal holiday is excluded', () => assertLocal(addBusinessHours(local(2026,9,11,8,30),24,{...hfn,holidays:['2026-09-14']}),16,15,30));
+test('start before operating hours begins at 8:30', () => assertLocal(addBusinessHours(local(2026,9,14,7),24,hfn),16,15,30));
+test('setup start is the later of Loan Setup and assistant assignment', () => assert.equal(laterOf('2026-09-14T08:30:00', '2026-09-14T10:00:00').getHours(),10));
+test('ITP signed to UW submission uses 24 business hours', () => assertLocal(dueAt(local(2026,9,14,8,30),{kind:'businessHours',value:24},hfn),16,15,30));
+test('UW submission to approval uses 72 business hours', () => assertLocal(dueAt(local(2026,9,14,8,30),{kind:'businessHours',value:72},hfn),24,12,30));
+test('UW submission to CTC uses 21 calendar days', () => assert.equal(dueAt('2026-09-01T12:00:00Z',{kind:'calendarDays',value:21}).toISOString(),'2026-09-22T12:00:00.000Z'));
+test('CTC ignores weekends and holidays', () => assert.equal(dueAt('2026-09-04T12:00:00Z',{kind:'calendarDays',value:21},{...hfn,holidays:['2026-09-07']}).toISOString(),'2026-09-25T12:00:00.000Z'));
+test('missing completion remains visible as in-progress', () => assert.equal(slaState(local(2026,9,14,8,30),null,{kind:'businessHours',value:24},local(2026,9,15,8,30),hfn).completed,false));

@@ -1,0 +1,3 @@
+/** Scores are percentage-based and normalized, never raw task-volume based. */
+export function performanceScore(metrics, weights) { const total = Object.values(weights).reduce((a, b) => a + b, 0); if (Math.abs(total - 1) > .0001) throw new Error('Assistant weights must total 1'); return Math.round(100 * (metrics.completion * weights.completion + metrics.sla * weights.sla + metrics.turnaround * weights.turnaround + metrics.backlog * weights.backlog)); }
+export function rankAssistants(assistants, weights) { return assistants.map(item => ({ ...item, score: performanceScore(item.metrics, weights) })).sort((a,b) => b.score - a.score || a.name.localeCompare(b.name)).map((item,index) => ({ ...item, rank: index + 1 })); }

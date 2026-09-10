@@ -1,0 +1,35 @@
+import { createServer } from 'node:http';
+import { readFile } from 'node:fs/promises';
+import { extname, join, normalize } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { timingSafeEqual } from 'node:crypto';
+import { acceptArivePayload, createAriveStore, integrationHealth } from './src/integrations/arive.js';
+import { loadRuntimeConfig } from './src/config/runtime.js';
+
+const root = join(process.cwd(), 'public');
+const types = { '.html':'text/html; charset=utf-8', '.js':'text/javascript; charset=utf-8', '.css':'text/css; charset=utf-8' };
+const json = (res, status, body) => { res.writeHead(status, {'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'}); res.end(JSON.stringify(body)); };
+async function readJson(req) {
+  let data=''; for await (const part of req) { data+=part; if (data.length>1_000_000) throw new Error('Payload too large'); }
+  if (!data) throw new Error('Request body is required'); try { return JSON.parse(data); } catch { throw new Error('Invalid JSON'); }
+}
+const authorized=(req,secret)=>{if(!secret)return true;const supplied=req.headers.authorization?.replace(/^Bearer\s+/i,'')??req.headers['x-hfn-webhook-secret'];if(!supplied)return false;const a=Buffer.from(supplied),b=Buffer.from(secret);return a.length===b.length&&timingSafeEqual(a,b);};
+export function createHfnServer({ store=createAriveStore(), environment=process.env.NODE_ENV ?? 'development', webhookSecret }={}) {
+  return createServer(async (req,res) => {
+    const url=new URL(req.url,'http://localhost');
+    try {
+      if (req.method==='POST' && (url.pathname==='/api/integrations/arive/events' || (environment!=='production' && url.pathname==='/api/development/arive/synthetic-event'))) {
+        if(url.pathname==='/api/integrations/arive/events'&&!authorized(req,webhookSecret))return json(res,401,{ok:false,error:'Unauthorized'});
+        const payload=await readJson(req), result=store.receive?await store.receive(payload):acceptArivePayload(store,payload);
+        return json(res,result.ok?200:400,{ok:result.ok,outcome:result.outcome,tasksCreated:result.tasksCreated,error:result.ok?undefined:result.error});
+      }
+      if (req.method==='GET' && url.pathname==='/api/integrations/arive/health') return json(res,200,store.health?await store.health():integrationHealth(store));
+      if (req.method==='GET' && (url.pathname==='/health'||url.pathname==='/api/health')) return json(res,200,{ok:true,status:'healthy'});
+      if (url.pathname.startsWith('/api/')) return json(res,404,{ok:false,error:'Not found'});
+      const requested=url.pathname==='/'?'index.html':url.pathname.slice(1), path=normalize(join(root,requested));
+      if (!path.startsWith(root)) return res.writeHead(403).end('Forbidden');
+      const body=await readFile(path); res.writeHead(200,{'Content-Type':types[extname(path)]??'application/octet-stream'}); res.end(body);
+    } catch (error) { const clientError=['Invalid JSON','Request body is required','Payload too large'].includes(error.message); json(res,clientError?400:500,{ok:false,error:clientError?error.message:'Internal error'}); }
+  });
+}
+if (process.argv[1]===fileURLToPath(import.meta.url)) { const config=loadRuntimeConfig(); let store=createAriveStore(); if(!config.demo){const {Pool}=await import('pg');const {PostgresAriveRepository}=await import('./src/storage/postgres-arive.js');store=new PostgresAriveRepository(new Pool({connectionString:config.databaseUrl,ssl:config.production?{rejectUnauthorized:true}:undefined}));await store.initialize();}createHfnServer({store,environment:config.production?'production':'development',webhookSecret:config.webhookSecret}).listen(config.port,'0.0.0.0',()=>console.log(`HFN Command Center running at http://0.0.0.0:${config.port}`)); }
