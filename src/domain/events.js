@@ -4,10 +4,8 @@ export const assistantMilestones = Object.freeze([
   { type:'appraisal_ordered', label:'Appraisal ordered', businessDays:1, completionKey:'appraisalOrderedDate' },
   { type:'title_ordered', label:'Title ordered', businessDays:1, completionKey:'titleOrderedDate' },
   { type:'insurance_ordered', label:'Insurance / HOI updates ordered', businessDays:1, completionKey:'hoiOrderedDate' },
-  { type:'payoff_ordered', label:'Payoff ordered', businessDays:1, completionKey:'payoffOrderedDate' },
   { type:'title_received', label:'Title completed / received', businessDays:5, completionKey:'titleReceivedDate' },
   { type:'insurance_received', label:'Insurance / HOI updates completed / received', businessDays:5, completionKey:'hoiReceivedDate' },
-  { type:'payoff_received', label:'Payoff received', businessDays:5, completionKey:'payoffReceivedDate' },
   { type:'appraisal_received', label:'Appraisal received', businessDays:7, completionKey:'appraisalReceivedDate' }
 ]);
 export function ingestEvent(state, incoming) {
