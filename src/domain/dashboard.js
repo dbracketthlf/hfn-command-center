@@ -33,7 +33,7 @@ export function buildLiveDashboard({ counts, processorLoans, processorSlas, fund
     const sla = completed.length ? onTime.length / completed.length : 0;
     const turnaround = turnaroundHours === null ? 0 : Math.max(0, 1 - turnaroundHours / (8.5 * 7));
     const backlog = active.length ? Math.max(0, 1 - pastDue / active.length) : 1;
-    return { name, activeTasks:active.length, completionPercent:Math.round(completion * 100), slaCompliancePercent:percent(onTime.length, completed.length), averageTurnaroundHours:turnaroundHours === null ? null : Number(turnaroundHours.toFixed(1)), pastDueTasks:pastDue, metrics:{ completion, sla, turnaround, backlog } };
-  }), assistantWeights).map(({ metrics, ...assistant }) => assistant);
+    return { name, activeTasks:active.length, completionPercent:Math.round(completion * 100), slaCompliancePercent:percent(onTime.length, completed.length), averageTurnaroundHours:turnaroundHours === null ? null : Number(turnaroundHours.toFixed(1)), pastDueTasks:pastDue, collectingData:completed.length===0, metrics:{ completion, sla, turnaround, backlog } };
+  }), assistantWeights).map(({ metrics, ...assistant }) => assistant).map(assistant=>assistant.collectingData?{...assistant,rank:'—',score:'Collecting data'}:assistant);
   return { source:'live', kpis:counts, processors, assistants, attention };
 }
