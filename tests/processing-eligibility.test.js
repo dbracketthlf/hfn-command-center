@@ -7,11 +7,14 @@ import { PostgresAriveRepository } from '../src/storage/postgres-arive.js';
 test('APPLICATION_INTAKE, QUALIFICATION, and PREAPPROVED never establish processing eligibility',()=>{
   for(const status of ['APPLICATION_INTAKE','QUALIFICATION','PREAPPROVED']) assert.equal(establishesProcessingEligibility(status),false);
 });
-test('LOAN_SETUP establishes eligibility and it persists through downstream, adverse, and suspended statuses',()=>{
-  assert.equal(establishesProcessingEligibility('LOAN_SETUP'),true);
+test('LOAN_SETUP and first-seen normal in-flight processing stages establish eligibility',()=>{
+  for(const status of ['LOAN_SETUP','UNDERWRITING_SUBMITTED','APPROVED_WITH_CONDITION','CLEAR_TO_CLOSE']) assert.equal(establishesProcessingEligibility(status),true);
+});
+test('eligibility persists through downstream, adverse, and suspended statuses',()=>{
   const loan={processingEligibleAt:'2026-09-10T17:00:00Z'};
   for(const status of ['UNDERWRITING_SUBMITTED','ADVERSE','SUSPENDED','LOAN_FUNDED']) assert.equal(isProcessingEligible({...loan,currentStage:status}),true);
 });
+test('first-seen ADVERSE does not establish eligibility',()=>assert.equal(establishesProcessingEligibility('ADVERSE'),false));
 test('pre-processing loans are absent from live KPI and File Detail inputs',()=>{
   const eligible=[{processingEligibleAt:'2026-09-10T17:00:00Z',displayLoanId:'ELIGIBLE'}];
   const inputs=[...eligible,{currentStage:'APPLICATION_INTAKE',displayLoanId:'17625730'}].filter(isProcessingEligible);
