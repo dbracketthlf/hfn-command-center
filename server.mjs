@@ -4,7 +4,7 @@ import { extname, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { timingSafeEqual } from 'node:crypto';
 import { acceptArivePayload, createAriveStore, integrationHealth } from './src/integrations/arive.js';
-import { loadRuntimeConfig } from './src/config/runtime.js';
+import { loadRuntimeConfig, postgresPoolOptions } from './src/config/runtime.js';
 
 const root = join(process.cwd(), 'public');
 const types = { '.html':'text/html; charset=utf-8', '.js':'text/javascript; charset=utf-8', '.css':'text/css; charset=utf-8' };
@@ -32,4 +32,4 @@ export function createHfnServer({ store=createAriveStore(), environment=process.
     } catch (error) { const clientError=['Invalid JSON','Request body is required','Payload too large'].includes(error.message); json(res,clientError?400:500,{ok:false,error:clientError?error.message:'Internal error'}); }
   });
 }
-if (process.argv[1]===fileURLToPath(import.meta.url)) { const config=loadRuntimeConfig(); let store=createAriveStore(); if(!config.demo){const {Pool}=await import('pg');const {PostgresAriveRepository}=await import('./src/storage/postgres-arive.js');store=new PostgresAriveRepository(new Pool({connectionString:config.databaseUrl,ssl:config.production?{rejectUnauthorized:true}:undefined}));await store.initialize();}createHfnServer({store,environment:config.production?'production':'development',webhookSecret:config.webhookSecret}).listen(config.port,'0.0.0.0',()=>console.log(`HFN Command Center running at http://0.0.0.0:${config.port}`)); }
+if (process.argv[1]===fileURLToPath(import.meta.url)) { const config=loadRuntimeConfig(); let store=createAriveStore(); if(!config.demo){const {Pool}=await import('pg');const {PostgresAriveRepository}=await import('./src/storage/postgres-arive.js');store=new PostgresAriveRepository(new Pool(postgresPoolOptions(config)));await store.initialize();}createHfnServer({store,environment:config.production?'production':'development',webhookSecret:config.webhookSecret}).listen(config.port,'0.0.0.0',()=>console.log(`HFN Command Center running at http://0.0.0.0:${config.port}`)); }

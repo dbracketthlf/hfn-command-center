@@ -8,6 +8,8 @@ Use one Render Node web service plus Render Postgres in the same region. It is t
 
 `NODE_ENV=production` · `DATABASE_URL` (Render internal PostgreSQL URL) · `ARIVE_WEBHOOK_SECRET` (long random secret) · `PORT` (hosting-provided; Render sets it automatically).
 
+The `pg` pool uses the `DATABASE_URL` directly and scopes `ssl: { rejectUnauthorized: false }` to that pool in production. This handles Render's managed/self-signed internal CA without setting `NODE_TLS_REJECT_UNAUTHORIZED` or changing global TLS verification. Use the Render **internal** database URL from a service in the same account and region.
+
 Optional local-only: `HFN_DEMO_MODE=true`. It is rejected in production.
 
 ## Deploy steps

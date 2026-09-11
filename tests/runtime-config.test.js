@@ -1,3 +1,5 @@
-import test from 'node:test'; import assert from 'node:assert/strict'; import { loadRuntimeConfig } from '../src/config/runtime.js';
+import test from 'node:test'; import assert from 'node:assert/strict'; import { loadRuntimeConfig, postgresPoolOptions } from '../src/config/runtime.js';
 test('production startup fails clearly without database and webhook secret',()=>assert.throws(()=>loadRuntimeConfig({NODE_ENV:'production'}),/DATABASE_URL, ARIVE_WEBHOOK_SECRET/));
 test('production startup accepts required configuration and rejects demo mode',()=>{assert.equal(loadRuntimeConfig({NODE_ENV:'production',DATABASE_URL:'postgres://example',ARIVE_WEBHOOK_SECRET:'secret'}).production,true);assert.throws(()=>loadRuntimeConfig({NODE_ENV:'production',DATABASE_URL:'postgres://example',ARIVE_WEBHOOK_SECRET:'secret',HFN_DEMO_MODE:'true'}),/HFN_DEMO_MODE/);});
+test('Render production pool scopes self-signed CA handling to pg',()=>{const config=loadRuntimeConfig({NODE_ENV:'production',DATABASE_URL:'postgres://render-internal',ARIVE_WEBHOOK_SECRET:'secret'});assert.deepEqual(postgresPoolOptions(config),{connectionString:'postgres://render-internal',ssl:{rejectUnauthorized:false}});});
+test('local pool preserves default non-TLS behavior',()=>assert.equal(postgresPoolOptions(loadRuntimeConfig({DATABASE_URL:'postgres://localhost'})).ssl,undefined));
