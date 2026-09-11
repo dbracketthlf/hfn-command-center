@@ -7,7 +7,12 @@ const digest = payload => createHash('sha256').update(JSON.stringify(payload) ??
 const eventId = payload => value(payload, 'zapierEventId', 'zapier_event_id', 'eventId', 'event_id') ?? digest(payload);
 const text = item => typeof item === 'string' ? item.trim() : item;
 function teamUsersFromSlots(payload) { const users=[]; for(let slot=1;slot<=10;slot++){const firstName=text(payload[`loanTeamUser${slot}FirstName`]),lastName=text(payload[`loanTeamUser${slot}LastName`]),email=text(payload[`loanTeamUser${slot}Email`]),role=text(payload[`loanTeamUser${slot}Role`]);if(firstName||lastName||email||role)users.push({firstName,lastName,email,role,name:[firstName,lastName].filter(Boolean).join(' ')});} return users; }
-export function selectProcessorAssistant(teamUsers) { const matches=(teamUsers??[]).filter(user=>user.role==='Assistant'); if(matches.length===1)return {assistant:matches[0],exception:null}; if(matches.length===0)return {assistant:null,exception:'No Loan Team User with Loan Role Assistant'}; return {assistant:null,exception:'Multiple Loan Team Users with Loan Role Assistant'}; }
+const processorAssistantRole = 'AssistantProcessor';
+/**
+ * ARIVE distinguishes Processor Assistants from Loan Officer Assistants in the
+ * loan-team role. Only the confirmed exact role is eligible for this ownership.
+ */
+export function selectProcessorAssistant(teamUsers) { const matches=(teamUsers??[]).filter(user=>user.role===processorAssistantRole); if(matches.length===1)return {assistant:matches[0],exception:null}; if(matches.length===0)return {assistant:null,exception:`No Loan Team User with Loan Role ${processorAssistantRole}`}; return {assistant:null,exception:`Multiple Loan Team Users with Loan Role ${processorAssistantRole}`}; }
 
 /** Maps only operational, non-borrower fields; raw payload is never persisted. */
 export function normalizeArivePayload(payload, receivedAt) {
