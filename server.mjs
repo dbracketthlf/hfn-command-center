@@ -24,6 +24,7 @@ export function createHfnServer({ store=createAriveStore(), environment=process.
         return json(res,result.ok?200:400,{ok:result.ok,outcome:result.outcome,tasksCreated:result.tasksCreated,error:result.ok?undefined:result.error});
       }
       if (req.method==='GET' && url.pathname==='/api/integrations/arive/health') return json(res,200,store.health?await store.health():integrationHealth(store));
+      if (req.method==='GET' && url.pathname==='/api/dashboard') return store.dashboard?json(res,200,await store.dashboard()):json(res,404,{ok:false,error:'Live dashboard unavailable in demo mode'});
       if (req.method==='GET' && url.pathname==='/api/loans') return json(res,200,store.listLoans?await store.listLoans(url.searchParams.get('q')??''):{source:'demo',loans:[]});
       if (req.method==='GET' && url.pathname.startsWith('/api/loans/')) { if(!store.loanDetail)return json(res,404,{ok:false,error:'Live loan detail unavailable in demo mode'});const detail=await store.loanDetail(decodeURIComponent(url.pathname.slice('/api/loans/'.length)));return detail?json(res,200,detail):json(res,404,{ok:false,error:'Loan not found'}); }
       if (req.method==='GET' && (url.pathname==='/health'||url.pathname==='/api/health')) return json(res,200,{ok:true,status:'healthy'});
