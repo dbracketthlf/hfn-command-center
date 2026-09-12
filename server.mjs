@@ -34,7 +34,7 @@ export function createHfnServer({ store=createAriveStore(), environment=process.
       const requested=url.pathname==='/'?'index.html':url.pathname.slice(1), path=normalize(join(root,requested));
       if (!path.startsWith(root)) return res.writeHead(403).end('Forbidden');
       let body=await readFile(path); if(environment==='production'&&requested==='index.html')body=Buffer.from(body.toString().replace('</head>','<script>window.HFN_PRODUCTION=true;</script></head>')); res.writeHead(200,{'Content-Type':types[extname(path)]??'application/octet-stream'}); res.end(body);
-    } catch (error) { const clientError=['Invalid JSON','Request body is required','Payload too large'].includes(error.message); json(res,clientError?400:500,{ok:false,error:clientError?error.message:'Internal error'}); }
+    } catch (error) { const clientError=['Invalid JSON','Request body is required','Payload too large'].includes(error.message);if(!clientError)console.error(JSON.stringify({route:url.pathname,errorName:error?.name??'Error',errorMessage:error?.message??'Unknown error',stack:error?.stack??null}));json(res,clientError?400:500,{ok:false,error:clientError?error.message:'Internal error'}); }
   });
 }
 export function listenHfnServer(server, config, onListening=()=>{}) { return server.listen({ port:config.port, host:'0.0.0.0' },onListening); }
