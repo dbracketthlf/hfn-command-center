@@ -3,6 +3,6 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "scripts": { "start": "node server.mjs", "test": "node --test", "db:migrate": "node scripts/migrate.mjs" },
+  "scripts": { "start": "node server.mjs", "test": "node --test", "db:migrate": "node scripts/migrate.mjs", "funding:backfill": "node scripts/funding-backfill.mjs" },
   "dependencies": { "pg": "^8.16.3" }
 }
