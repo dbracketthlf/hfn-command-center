@@ -1,4 +1,4 @@
-import { rankAssistants } from './performance.js';
+import { performanceScore } from './performance.js';
 import { assistantWeights } from './rules.js';
 import { assistantMetricKeys, metricResult, overallResult, processorMetricKey, processorMetricKeys } from './kpi-metrics.js';
 
@@ -27,7 +27,7 @@ export function buildLiveDashboard({ counts, processorLoans, processorSlas, fund
     if (!byAssistant.has(observation.assistant)) byAssistant.set(observation.assistant, []);
     byAssistant.get(observation.assistant).push({...observation,kpiOnly:true,completedAt:measurableProcessorState(observation.state)?observation.evaluatedAt??observation.dueAt:null});
   }
-  const assistants = rankAssistants([...byAssistant].map(([name, tasks]) => {
+  const assistants = [...byAssistant].map(([name, tasks]) => {
     const completed = tasks.filter(task => task.completedAt);
     const active = tasks.filter(task => !task.kpiOnly && !task.completedAt);
     const onTime = completed.filter(task => new Date(task.completedAt) <= new Date(task.dueAt));
@@ -38,7 +38,7 @@ export function buildLiveDashboard({ counts, processorLoans, processorSlas, fund
     const sla = completed.length ? onTime.length / completed.length : 0;
     const turnaround = turnaroundHours === null ? 0 : Math.max(0, 1 - turnaroundHours / (8.5 * 7));
     const backlog = active.length ? Math.max(0, 1 - pastDue / active.length) : 1;
-    const observations=tasks.map(task=>({metricKey:task.taskType??task.type,kpiEligible:task.kpiEligible,completedAt:task.completedAt,dueAt:task.dueAt}));const individual=Object.fromEntries(assistantMetricKeys.map(key=>[key,metricResult(observations,key)]));const overall=overallResult(observations);return { name, activeTasks:active.length, completionPercent:Math.round(completion * 100), slaCompliancePercent:overall.percentage, individualSlas:individual, overallSla:overall, averageTurnaroundHours:turnaroundHours === null ? null : Number(turnaroundHours.toFixed(1)), pastDueTasks:pastDue, collectingData:completed.length===0, metrics:{ completion, sla, turnaround, backlog } };
-  }), assistantWeights).map(({ metrics, ...assistant }) => assistant).map(assistant=>assistant.collectingData?{...assistant,rank:'—',score:'Collecting data',completionPercent:null,slaCompliancePercent:null,averageTurnaroundHours:null}:assistant);
+    const observations=tasks.map(task=>({metricKey:task.taskType??task.type,kpiEligible:task.kpiEligible,completedAt:task.completedAt,dueAt:task.dueAt}));const individual=Object.fromEntries(assistantMetricKeys.map(key=>[key,metricResult(observations,key)]));const overall=overallResult(observations);const metrics={ completion, sla, turnaround, backlog };return { name, activeTasks:active.length, completionPercent:Math.round(completion * 100), slaCompliancePercent:overall.percentage, individualSlas:individual, overallSla:overall, averageTurnaroundHours:turnaroundHours === null ? null : Number(turnaroundHours.toFixed(1)), pastDueTasks:pastDue, collectingData:completed.length===0, score:performanceScore(metrics,assistantWeights) };
+  }).map(assistant=>assistant.collectingData?{...assistant,score:'Collecting data',completionPercent:null,slaCompliancePercent:null,averageTurnaroundHours:null}:assistant);
   return { source:'live', kpis:counts, processors, assistants, attention };
 }
