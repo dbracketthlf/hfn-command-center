@@ -2,6 +2,7 @@ import { rankAssistants } from './performance.js';
 import { assistantWeights } from './rules.js';
 
 const processorNames = ['Susan Vu', 'Elizabeth Martinez'];
+const assistantNames = ['Joshua Quintanilla', 'Sophia Gomez'];
 const metricLabels = { setup:'Setup SLA %', disclosures:'Disclosure SLA %', uw:'UW Submit SLA %', approval:'Approval SLA %', conditions:'Conditions SLA %', ctc:'CTC SLA %' };
 const category = metric => Object.keys(metricLabels).find(key => metric.toLowerCase().includes(key));
 const percent = (good, total) => total ? Math.round(good / total * 100) : null;
@@ -17,7 +18,7 @@ export function buildLiveDashboard({ counts, processorLoans, processorSlas, fund
     }));
     return { name, activeLoans:loans.filter(row => row.currentStage !== 'LOAN_FUNDED').length, setupSla:sla.setup, disclosureSla:sla.disclosures, uwSubmitSla:sla.uw, approvalSla:sla.approval, conditionsSla:sla.conditions, ctcSla:sla.ctc, fundedMtd:funded.filter(row => row.processor === name).length, pastSla:slas.filter(row => row.state === 'breached').length };
   });
-  const byAssistant = new Map();
+  const byAssistant = new Map(assistantNames.map(name => [name, []]));
   for (const task of assistantTasks) {
     if (!task.assistant || task.assistant === 'Unassigned') continue;
     if (!byAssistant.has(task.assistant)) byAssistant.set(task.assistant, []);
@@ -29,11 +30,11 @@ export function buildLiveDashboard({ counts, processorLoans, processorSlas, fund
     const onTime = completed.filter(task => new Date(task.completedAt) <= new Date(task.dueAt));
     const turnaroundHours = completed.length ? completed.reduce((total, task) => total + (new Date(task.completedAt) - new Date(task.applicableAt)) / 3_600_000, 0) / completed.length : null;
     const pastDue = active.filter(task => new Date(task.dueAt) < new Date()).length;
-    const completion = completed.length / tasks.length;
+    const completion = tasks.length ? completed.length / tasks.length : 0;
     const sla = completed.length ? onTime.length / completed.length : 0;
     const turnaround = turnaroundHours === null ? 0 : Math.max(0, 1 - turnaroundHours / (8.5 * 7));
     const backlog = active.length ? Math.max(0, 1 - pastDue / active.length) : 1;
     return { name, activeTasks:active.length, completionPercent:Math.round(completion * 100), slaCompliancePercent:percent(onTime.length, completed.length), averageTurnaroundHours:turnaroundHours === null ? null : Number(turnaroundHours.toFixed(1)), pastDueTasks:pastDue, collectingData:completed.length===0, metrics:{ completion, sla, turnaround, backlog } };
-  }), assistantWeights).map(({ metrics, ...assistant }) => assistant).map(assistant=>assistant.collectingData?{...assistant,rank:'—',score:'Collecting data'}:assistant);
+  }), assistantWeights).map(({ metrics, ...assistant }) => assistant).map(assistant=>assistant.collectingData?{...assistant,rank:'—',score:'Collecting data',completionPercent:null,slaCompliancePercent:null,averageTurnaroundHours:null}:assistant);
   return { source:'live', kpis:counts, processors, assistants, attention };
 }
