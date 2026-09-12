@@ -20,7 +20,7 @@ export function buildLiveDashboard({ counts, processorLoans, processorSlas, fund
   });
   const byAssistant = new Map(assistantNames.map(name => [name, []]));
   for (const task of assistantTasks) {
-    if (!task.assistant || task.assistant === 'Unassigned') continue;
+    if (task.kpiEligible===false || !task.assistant || task.assistant === 'Unassigned') continue;
     if (!byAssistant.has(task.assistant)) byAssistant.set(task.assistant, []);
     byAssistant.get(task.assistant).push(task);
   }
