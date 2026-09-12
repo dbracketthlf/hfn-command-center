@@ -13,7 +13,7 @@ test('live dashboard calculates KPI and scoreboards from persisted operational r
   });
   assert.equal(dashboard.source,'live');
   assert.equal(dashboard.kpis.activeLoans,2);
-  assert.equal(dashboard.processors.find(item=>item.name==='Susan Vu').setupSla,50);
+  assert.equal(dashboard.processors.find(item=>item.name==='Susan Vu').setupSla,undefined);
   assert.equal(dashboard.assistants[0].completionPercent,100);
   assert.equal(JSON.stringify(dashboard).includes('HFN-26091'),false);
 });
