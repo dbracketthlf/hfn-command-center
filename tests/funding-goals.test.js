@@ -1,0 +1,6 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { fundingGoalSummary } from '../src/domain/funding-goals.js';
+
+test('September goal reports funded files, volume, percentages, and current-month pace',()=>{const result=fundingGoalSummary({year:2026,month:9,goal:{fundedLoanGoal:30,fundedVolumeGoal:15000000},actualCount:18,actualVolume:9200000,now:new Date('2026-09-16T12:00:00')});assert.deepEqual(result.fundedCount,{actual:18,goal:30,percent:60});assert.deepEqual(result.fundedVolume,{actual:9200000,goal:15000000,percent:61,missingAmountCount:0});assert.equal(result.filePace,'on-pace');});
+test('missing goal and funded amount remain explicit instead of inventing values',()=>{const result=fundingGoalSummary({year:2026,month:8,goal:null,actualCount:1,actualVolume:0,missingAmountCount:1,now:new Date('2026-09-16')});assert.equal(result.fundedCount.goal,null);assert.equal(result.fundedVolume.percent,null);assert.equal(result.fundedVolume.missingAmountCount,1);assert.equal(result.filePace,'final');});
