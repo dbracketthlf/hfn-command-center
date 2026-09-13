@@ -19,3 +19,10 @@ test('My Work groups safe tasks into loan cards with human-readable state badges
   assert.match(styles,/\.task-state/);
   assert.match(styles,/@media\(max-width:700px\)/);
 });
+
+test('My Work modal uses associated labels and preserves grouped task rendering',async()=>{
+  const [html,script,formStyles]=await Promise.all([readFile(new URL('../public/my-work.html',import.meta.url),'utf8'),readFile(new URL('../public/my-work.js',import.meta.url),'utf8'),readFile(new URL('../public/my-work-form.css',import.meta.url),'utf8')]);
+  for(const field of ['manual-loan','manual-title','manual-assignee','manual-priority','manual-due','manual-note'])assert.match(html,new RegExp(`label for="${field}"`));
+  assert.match(html,/form-row/);assert.match(html,/my-work-form\.css/);assert.match(formStyles,/grid-template-columns:1\.4fr \.8fr/);assert.match(formStyles,/@media\(max-width:520px\)/);
+  assert.match(script,/groupTasksByLoan\(rows\)/);assert.match(script,/new Map\(\)/);assert.match(script,/groupTasksByLoan\(rows\)\.map\(loanCard\)/);assert.match(script,/<small class="manual-badge">MANUAL<\/small>/);assert.match(script,/data-cancel-manual/);
+});
