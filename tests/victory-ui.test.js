@@ -1,0 +1,4 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
+test('victory UI queues persisted events and keeps audio failure non-blocking',async()=>{const [app,html,styles]=await Promise.all([readFile(new URL('../public/app.js',import.meta.url),'utf8'),readFile(new URL('../public/index.html',import.meta.url),'utf8'),readFile(new URL('../public/victory.css',import.meta.url),'utf8')]);assert.match(app,/celebrationQueue/);assert.match(app,/playNextCelebration/);assert.match(app,/api\/victory-events\?after=/);assert.match(app,/catch\{\/\* Audio is optional/);assert.match(app,/api\/development\/victory-events\/preview/);assert.match(app,/!productionMode/);assert.match(html,/victory-overlay/);assert.match(styles,/prefers-reduced-motion/);});

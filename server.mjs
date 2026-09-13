@@ -6,6 +6,7 @@ import { timingSafeEqual } from 'node:crypto';
 import { acceptArivePayload, createAriveStore, integrationHealth } from './src/integrations/arive.js';
 import { loadRuntimeConfig, postgresPoolOptions } from './src/config/runtime.js';
 import { EntraOidcAuth, parseCookies, secureCookie } from './src/auth/entra-oidc.js';
+import { previewVictoryEvent } from './src/domain/victory.js';
 
 const root = join(process.cwd(), 'public');
 const types = { '.html':'text/html; charset=utf-8', '.js':'text/javascript; charset=utf-8', '.css':'text/css; charset=utf-8' };
@@ -34,6 +35,8 @@ export function createHfnServer({ store=createAriveStore(), environment=process.
       }
       if (req.method==='GET' && url.pathname==='/api/integrations/arive/health') return json(res,200,store.health?await store.health():integrationHealth(store));
       if (req.method==='GET' && url.pathname==='/api/dashboard') return store.dashboard?json(res,200,await store.dashboard()):json(res,404,{ok:false,error:'Live dashboard unavailable in demo mode'});
+      if (req.method==='GET' && url.pathname==='/api/victory-events') return store.victoryEvents?json(res,200,await store.victoryEvents(url.searchParams.get('after'))):json(res,200,{events:[]});
+      if (environment!=='production' && req.method==='GET' && url.pathname==='/api/development/victory-events/preview') return json(res,200,{event:previewVictoryEvent(url.searchParams.get('type')??undefined)});
       if (req.method==='GET' && url.pathname==='/api/admin/funding-goals') { if(!authorized(req,webhookSecret))return json(res,401,{ok:false,error:'Unauthorized'});if(!store.monthlyFundingGoal)return json(res,404,{ok:false,error:'Funding goals unavailable'});const now=new Date(),year=Number(url.searchParams.get('year')??now.getFullYear()),month=Number(url.searchParams.get('month')??now.getMonth()+1);return json(res,200,await store.monthlyFundingGoal(year,month)); }
       if (req.method==='PUT' && url.pathname==='/api/admin/funding-goals') { if(!authorized(req,webhookSecret))return json(res,401,{ok:false,error:'Unauthorized'});if(!store.saveMonthlyFundingGoal)return json(res,404,{ok:false,error:'Funding goals unavailable'});const body=await readJson(req);return json(res,200,await store.saveMonthlyFundingGoal({year:Number(body.year),month:Number(body.month),fundedLoanGoal:Number(body.fundedLoanGoal),fundedVolumeGoal:Number(body.fundedVolumeGoal)})); }
       if (req.method==='GET' && url.pathname==='/api/loans') return json(res,200,store.listLoans?await store.listLoans(url.searchParams.get('q')??''):{source:environment==='production'?'live':'demo',loans:[]});
