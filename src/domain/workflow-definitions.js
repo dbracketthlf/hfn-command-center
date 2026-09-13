@@ -8,7 +8,7 @@ export const workflowDefinitions=Object.freeze([
   {trigger:'UNDERWRITING_SUBMITTED',type:'request_insurance_eoi',title:'Request insurance / EOI package',ownerRole:'processor_assistant',businessDays:1,completeOn:['INSURANCE_ORDERED'],followUpBusinessDays:3,waitingOn:'insurance_agent',checklist:['Updated Evidence of Insurance','Replacement Cost Estimator','Insurance Invoice']},
   {trigger:'UNDERWRITING_SUBMITTED',type:'order_payoff',title:'Order payoff',ownerRole:'processor_assistant',businessDays:1,manual:true,followUpBusinessDays:3,waitingOn:'other'},
   {trigger:'APPROVED_WITH_CONDITION',type:'review_underwriting_approval',title:'Review approval and manage conditions in ARIVE',ownerRole:'processor',businessDays:1},
-  {trigger:'RE_SUBMITTAL',type:'follow_up_clear_to_close',title:'Follow up for Clear to Close',ownerRole:'processor',businessDays:2,completeOn:['CLEAR_TO_CLOSE'],waitingOn:'underwriter'},
+  {trigger:'RE_SUBMITTAL',type:'follow_up_clear_to_close',title:'Follow up for Clear to Close',ownerRole:'processor',businessDays:2,completeOn:['CLEAR_TO_CLOSE'],followUpBusinessDays:2,waitingOn:'underwriter'},
   {trigger:'MANUAL_READY_FOR_RESUBMITTAL',type:'resubmit_conditions_to_uw',title:'Re-submit Conditions to UW',ownerRole:'processor',businessDays:0,completeOn:['RE_SUBMITTAL']},
   {trigger:'CLEAR_TO_CLOSE',type:'request_loan_documents',title:'Request loan documents',ownerRole:'processor',businessDays:1,completeOn:['DOCS_OUT']},
   {trigger:'CLEAR_TO_CLOSE',type:'ctc_closing_readiness',title:'CTC closing readiness / verify closing invoices',ownerRole:'processor_assistant',businessDays:0,checklist:['Settlement Statement','Appraisal Invoice','Credit Report Invoice','Flood Cert Invoice','HOA Cert Invoice','Insurance Invoice']},
