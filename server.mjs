@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { timingSafeEqual } from 'node:crypto';
 import { acceptArivePayload, createAriveStore, integrationHealth } from './src/integrations/arive.js';
 import { loadRuntimeConfig, postgresPoolOptions } from './src/config/runtime.js';
+import { EntraOidcAuth, parseCookies, secureCookie } from './src/auth/entra-oidc.js';
 
 const root = join(process.cwd(), 'public');
 const types = { '.html':'text/html; charset=utf-8', '.js':'text/javascript; charset=utf-8', '.css':'text/css; charset=utf-8' };
@@ -14,10 +15,18 @@ async function readJson(req) {
   if (!data) throw new Error('Request body is required'); try { return JSON.parse(data); } catch { throw new Error('Invalid JSON'); }
 }
 const authorized=(req,secret)=>{if(!secret)return true;const supplied=req.headers.authorization?.replace(/^Bearer\s+/i,'')??req.headers['x-hfn-webhook-secret'];if(!supplied)return false;const a=Buffer.from(supplied),b=Buffer.from(secret);return a.length===b.length&&timingSafeEqual(a,b);};
-export function createHfnServer({ store=createAriveStore(), environment=process.env.NODE_ENV ?? 'development', webhookSecret }={}) {
+const redirect=(res,location,headers={})=>{res.writeHead(302,{Location:location,...headers});res.end();};
+export function createHfnServer({ store=createAriveStore(), environment=process.env.NODE_ENV ?? 'development', webhookSecret, auth=null }={}) {
   return createServer(async (req,res) => {
     const url=new URL(req.url,'http://localhost');
     try {
+      const cookies=parseCookies(req.headers.cookie),employee=auth?await auth.session(cookies):null;
+      if(req.method==='GET'&&url.pathname==='/auth/login'){if(!auth)return json(res,503,{ok:false,error:'Authentication is not configured'});return redirect(res,await auth.loginUrl());}
+      if(req.method==='GET'&&url.pathname==='/auth/callback'){if(!auth)return json(res,503,{ok:false,error:'Authentication is not configured'});const completed=await auth.complete({state:url.searchParams.get('state'),code:url.searchParams.get('code')});return redirect(res,'/my-work',{'Set-Cookie':secureCookie('hfn_session',completed.sessionToken,{production:environment==='production',maxAge:28800})});}
+      if(req.method==='POST'&&url.pathname==='/auth/logout'){if(auth)await auth.logout(cookies);return json(res,200,{ok:true});}
+      if(req.method==='GET'&&url.pathname==='/api/auth/me'){if(!employee)return json(res,401,{ok:false,error:'Sign in required'});return json(res,200,{ok:true,employee:{email:employee.email,displayName:employee.displayName,role:employee.role}});}
+      if(req.method==='GET'&&url.pathname==='/api/my-work'){if(!employee)return json(res,401,{ok:false,error:'Sign in required'});if(!store.processorWorkQueue)return json(res,503,{ok:false,error:'Work queue unavailable'});if(employee.role!=='processor'&&employee.role!=='admin')return json(res,403,{ok:false,error:'Processor My Work is not available for this role'});return json(res,200,await store.processorWorkQueue({employee,ownerEmail:employee.role==='admin'?url.searchParams.get('ownerEmail'):null}));}
+      if(req.method==='GET'&&url.pathname==='/my-work'){if(!employee)return redirect(res,'/auth/login');const body=await readFile(join(root,'my-work.html'));res.writeHead(200,{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store'});return res.end(body);}
       if (req.method==='POST' && (url.pathname==='/api/integrations/arive/events' || (environment!=='production' && url.pathname==='/api/development/arive/synthetic-event'))) {
         if(url.pathname==='/api/integrations/arive/events'&&!authorized(req,webhookSecret))return json(res,401,{ok:false,error:'Unauthorized'});
         const payload=await readJson(req), result=store.receive?await store.receive(payload):acceptArivePayload(store,payload);
@@ -38,4 +47,4 @@ export function createHfnServer({ store=createAriveStore(), environment=process.
   });
 }
 export function listenHfnServer(server, config, onListening=()=>{}) { return server.listen({ port:config.port, host:'0.0.0.0' },onListening); }
-if (process.argv[1]===fileURLToPath(import.meta.url)) { const config=loadRuntimeConfig(); let store=createAriveStore(); if(!config.demo){const {Pool}=await import('pg');const {PostgresAriveRepository}=await import('./src/storage/postgres-arive.js');store=new PostgresAriveRepository(new Pool(postgresPoolOptions(config)));await store.initialize();}const server=createHfnServer({store,environment:config.production?'production':'development',webhookSecret:config.webhookSecret});listenHfnServer(server,config,()=>console.log(`HFN Command Center running at http://0.0.0.0:${config.port}`)); }
+if (process.argv[1]===fileURLToPath(import.meta.url)) { const config=loadRuntimeConfig(); let store=createAriveStore(),auth=null; if(!config.demo){const {Pool}=await import('pg');const {PostgresAriveRepository}=await import('./src/storage/postgres-arive.js');store=new PostgresAriveRepository(new Pool(postgresPoolOptions(config)));await store.initialize();auth=new EntraOidcAuth({repository:store,config});}const server=createHfnServer({store,auth,environment:config.production?'production':'development',webhookSecret:config.webhookSecret});listenHfnServer(server,config,()=>console.log(`HFN Command Center running at http://0.0.0.0:${config.port}`)); }
