@@ -2,7 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { emptyIntegrationState, ingestEvent } from '../domain/events.js';
 
 const value = (payload, ...names) => names.map(name => payload[name]).find(item => item !== undefined && item !== null && item !== '');
-const statusMap = Object.freeze({ LOAN_SETUP:'LOAN_SETUP', DISCLOSED:'DISCLOSED', UNDERWRITING_SUBMITTED:'UNDERWRITING_SUBMITTED', APPROVED_WITH_CONDITION:'APPROVED_WITH_CONDITION', CLEAR_TO_CLOSE:'CLEAR_TO_CLOSE', DOCS_OUT:'DOCS_OUT', DOCS_SIGNED:'DOCS_SIGNED', LOAN_FUNDED:'LOAN_FUNDED' });
+const statusMap = Object.freeze({ LOAN_SETUP:'LOAN_SETUP', DISCLOSED:'DISCLOSED', ITP_SIGNED:'ITP_SIGNED', UNDERWRITING_SUBMITTED:'UNDERWRITING_SUBMITTED', APPROVED_WITH_CONDITION:'APPROVED_WITH_CONDITION', RE_SUBMITTAL:'RE_SUBMITTAL', CLEAR_TO_CLOSE:'CLEAR_TO_CLOSE', DOCS_OUT:'DOCS_OUT', DOCS_SIGNED:'DOCS_SIGNED', LOAN_FUNDED:'LOAN_FUNDED' });
 const digest = payload => createHash('sha256').update(JSON.stringify(payload) ?? 'null').digest('hex');
 const eventId = payload => value(payload, 'zapierEventId', 'zapier_event_id', 'eventId', 'event_id') ?? digest(payload);
 const text = item => typeof item === 'string' ? item.trim() : item;

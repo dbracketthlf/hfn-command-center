@@ -1,5 +1,5 @@
 import { dueAt } from './sla.js';
-export const eventTypes = Object.freeze(['LOAN_SETUP', 'PROCESSOR_ASSISTANT_ASSIGNED', 'DISCLOSED', 'ITP_SIGNED', 'UNDERWRITING_SUBMITTED', 'APPROVED_WITH_CONDITION', 'CONDITIONS_REVIEW_STARTED', 'CONDITIONS_REVIEWED', 'CLEAR_TO_CLOSE', 'CD_SENT', 'DOCS_OUT', 'DOCS_SIGNED', 'LOAN_FUNDED']);
+export const eventTypes = Object.freeze(['LOAN_SETUP', 'PROCESSOR_ASSISTANT_ASSIGNED', 'DISCLOSED', 'ITP_SIGNED', 'UNDERWRITING_SUBMITTED', 'APPROVED_WITH_CONDITION', 'RE_SUBMITTAL', 'CONDITIONS_REVIEW_STARTED', 'CONDITIONS_REVIEWED', 'CLEAR_TO_CLOSE', 'CD_SENT', 'DOCS_OUT', 'DOCS_SIGNED', 'LOAN_FUNDED']);
 export const assistantMilestones = Object.freeze([
   { type:'appraisal_ordered', label:'Appraisal ordered', businessDays:1, completionKey:'appraisalOrderedDate' },
   { type:'title_ordered', label:'Title ordered', businessDays:1, completionKey:'titleOrderedDate' },
