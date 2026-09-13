@@ -1,4 +1,4 @@
-export const assistantMetricKeys=Object.freeze(['setup','disclosures','appraisal_ordered','title_ordered','insurance_ordered','title_received','insurance_received','appraisal_received']);
+export const assistantMetricKeys=Object.freeze(['setup','disclosures','appraisal_ordered','title_ordered','insurance_ordered','title_received','insurance_received','appraisal_received','closing_disclosure_sent']);
 export const processorMetricKeys=Object.freeze(['uw_submission','approval','conditions','ctc']);
 export const metricOwner=key=>assistantMetricKeys.includes(key)?'assistant':processorMetricKeys.includes(key)?'processor':null;
 export const processorMetricKey=key=>{const value=String(key??'').toLowerCase();if(value.includes('uw')&&(value.includes('submit')||value.includes('submission')))return 'uw_submission';if(value.includes('approval'))return 'approval';if(value.includes('condition'))return 'conditions';if(value.includes('ctc')||value.includes('clear_to_close')||value.includes('clear to close'))return 'ctc';return null;};

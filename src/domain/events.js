@@ -8,6 +8,7 @@ export const assistantMilestones = Object.freeze([
   { type:'insurance_received', label:'Insurance / HOI updates completed / received', businessDays:5, completionKey:'hoiReceivedDate' },
   { type:'appraisal_received', label:'Appraisal received', businessDays:7, completionKey:'appraisalReceivedDate' }
 ]);
+export const closingDisclosureMilestone=Object.freeze({type:'closing_disclosure_sent',label:'Closing Disclosure sent',businessDays:2,startKey:'appraisalReceivedDate',completionKey:'initialCDSentDate'});
 export function ingestEvent(state, incoming) {
   const receivedAt = incoming.receivedAt ?? new Date().toISOString();
   if (!incoming.loanId || !incoming.type || !incoming.occurredAt || !incoming.source) return { state: { ...state, failed: [...state.failed, { ...incoming, receivedAt, reason: 'Missing required event fields' }] }, outcome: 'failed' };
@@ -16,10 +17,11 @@ export function ingestEvent(state, incoming) {
   if (state.eventKeys.has(key)) return { state: { ...state, duplicateEvents: state.duplicateEvents + 1 }, outcome: 'duplicate' };
   const event = { ...incoming, receivedAt, idempotencyKey: key };
   const next = { ...state, eventKeys: new Set([...state.eventKeys, key]), events: [...state.events, event], processedEvents: state.processedEvents + 1 };
-  if (event.type !== 'UNDERWRITING_SUBMITTED') return { state: next, outcome: 'processed' };
   const existing = new Set(next.tasks.filter(task => task.loanId === event.loanId).map(task => task.type));
   const dates = event.metadata?.milestoneDates ?? {};
-  const created = assistantMilestones.filter(milestone => !existing.has(milestone.type)).map(milestone => { const completedAt=dates[milestone.completionKey]??null; return { id: `${event.loanId}:${milestone.type}`, loanId:event.loanId, type:milestone.type, label:milestone.label, assistantId:event.metadata?.assistantId, applicableAt:event.occurredAt, businessDays:milestone.businessDays, dueAt:dueAt(event.occurredAt,{kind:'businessHours',value:milestone.businessDays*8.5}).toISOString(), completedAt, status:completedAt?'completed':'open' }; });
-  return { state: { ...next, tasks: [...next.tasks, ...created] }, outcome: 'processed', tasksCreated: created.length };
+  const created=event.type==='UNDERWRITING_SUBMITTED'?assistantMilestones.filter(milestone => !existing.has(milestone.type)).map(milestone => { const completedAt=dates[milestone.completionKey]??null; return { id: `${event.loanId}:${milestone.type}`, loanId:event.loanId, type:milestone.type, label:milestone.label, assistantId:event.metadata?.assistantId, applicableAt:event.occurredAt, businessDays:milestone.businessDays, dueAt:dueAt(event.occurredAt,{kind:'businessHours',value:milestone.businessDays*8.5},event.metadata?.calendar).toISOString(), completedAt, status:completedAt?'completed':'open' }; }):[];
+  let tasks=[...next.tasks,...created],tasksCreated=created.length;
+  if(dates[closingDisclosureMilestone.startKey]){const applicableAt=dates[closingDisclosureMilestone.startKey],dueAtValue=dueAt(applicableAt,{kind:'businessHours',value:closingDisclosureMilestone.businessDays*8.5},event.metadata?.calendar).toISOString(),completedAt=dates[closingDisclosureMilestone.completionKey]??null,index=tasks.findIndex(task=>task.loanId===event.loanId&&task.type===closingDisclosureMilestone.type);if(index===-1){tasks.push({id:`${event.loanId}:${closingDisclosureMilestone.type}`,loanId:event.loanId,type:closingDisclosureMilestone.type,label:closingDisclosureMilestone.label,assistantId:event.metadata?.assistantId,applicableAt,businessDays:closingDisclosureMilestone.businessDays,dueAt:dueAtValue,completedAt,status:completedAt?'completed':'open'});tasksCreated++;}else if(!tasks[index].completedAt&&completedAt){tasks[index]={...tasks[index],completedAt,status:'completed'};}}
+  return { state: { ...next, tasks }, outcome: 'processed', ...(tasksCreated?{tasksCreated}:{}) };
 }
 export const emptyIntegrationState = () => ({ eventKeys: new Set(), events: [], tasks: [], failed: [], processedEvents: 0, duplicateEvents: 0 });
