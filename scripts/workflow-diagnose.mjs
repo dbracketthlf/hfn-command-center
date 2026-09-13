@@ -1,0 +1,17 @@
+import { Pool } from 'pg';
+import { postgresPoolOptions } from '../src/config/runtime.js';
+import { ariveMilestoneTaskMap } from '../src/domain/workflow-reconciliation.js';
+
+const index=process.argv.indexOf('--loan'),displayLoanId=index>=0?String(process.argv[index+1]??'').trim():'';
+if(!displayLoanId)throw new Error('Usage: npm run workflow:diagnose -- --loan <displayLoanId>');
+if(!process.env.DATABASE_URL)throw new Error('DATABASE_URL is required for workflow:diagnose');
+const pool=new Pool(postgresPoolOptions({databaseUrl:process.env.DATABASE_URL,production:process.env.NODE_ENV==='production'}));
+try{
+  const loan=await pool.query(`select id,arive_display_loan_id "displayLoanId",current_stage "currentStage" from loans where arive_display_loan_id=$1`,[displayLoanId]);
+  if(!loan.rowCount){console.log(JSON.stringify({loan:null,reason:'Loan not found'},null,2));process.exitCode=1;}else{
+    const row=loan.rows[0],snapshot=await pool.query(`select payload->'milestoneDates' dates,payload->'trackerContext' tracker from inbound_events where source='zapier-arive' and payload->>'ariveDisplayLoanId'=$1 order by received_at desc,id desc limit 1`,[displayLoanId]),values=snapshot.rows[0]??{dates:{},tracker:{}};
+    const dates=values.dates??{},tracker=values.tracker??{},tasks=await pool.query(`select id,task_type,origin,state,kpi_eligible,due_at,completed_at from workflow_tasks where loan_id=$1 order by created_at`,[row.id]),hoi=tasks.rows.find(task=>task.task_type==='request_insurance_eoi'),open=hoi&&!['completed','cancelled','not_applicable'].includes(hoi.state),mapped=ariveMilestoneTaskMap.find(([,taskType])=>taskType==='request_insurance_eoi'),trackerOrdered=String(tracker.hoiStatus??'').trim().toUpperCase()==='ORDERED'&&Boolean(tracker.hoiTrackerDate),candidate=Boolean(hoi&&open&&(dates.hoiOrderedDate||trackerOrdered));
+    const reason=!hoi?'request_insurance_eoi does not exist':!open?'request_insurance_eoi is already completed, cancelled, or not applicable':!dates.hoiOrderedDate?'hoiOrderedDate is not populated in the latest persisted redacted ARIVE snapshot':candidate?'A reconciliation candidate exists; a dry-run should report it':'No reconciliation candidate matches the persisted task and milestone state';
+    console.log(JSON.stringify({loan:{displayLoanId:row.displayLoanId,currentStage:row.currentStage},persistedArive:{hoiOrderedDate:dates.hoiOrderedDate??null,hoiStatus:tracker.hoiStatus??null,hoiDate:tracker.hoiTrackerDate??null,titleOrderedDate:dates.titleOrderedDate??null,appraisalOrderedDate:dates.appraisalOrderedDate??null,initialCDSentDate:dates.initialCDSentDate??null},workflowTasks:tasks.rows.map(task=>({id:task.id,taskType:task.task_type,origin:task.origin,state:task.state,kpiEligible:task.kpi_eligible,dueAt:task.due_at,completedAt:task.completed_at})),requestInsuranceEoi:{exists:Boolean(hoi),open:Boolean(open),hoiOrderedDatePopulated:Boolean(dates.hoiOrderedDate),matchesReconciliationMapping:Boolean(mapped&&mapped[0]==='hoiOrderedDate'),reconciliationCandidate:candidate,reason}},null,2));
+  }
+}finally{await pool.end();}
