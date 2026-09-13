@@ -9,8 +9,10 @@ export const ariveMilestoneTaskMap=Object.freeze([
   ['hoiReceivedDate','insurance_follow_up','hoi_received',null,null],
   ['initialCDSentDate','closing_disclosure_sent','initial_cd_sent',null,null]
 ]);
-const ordered=value=>String(value??'').trim().toUpperCase()==='ORDERED';
-export function reconciliationEvidence(milestoneDates={},trackerContext={}){return ariveMilestoneTaskMap.map(([keyDate,taskType,milestone,statusKey,dateKey])=>{const keyAt=milestoneDates[keyDate];const fallbackAt=!keyAt&&statusKey&&ordered(trackerContext[statusKey])?trackerContext[dateKey]??null:null;return {taskType,milestone,completedAt:keyAt??fallbackAt,evidence:keyAt?'key_date':fallbackAt?'tracker_ordered_date':null};});}
+const trackerStatus=(value,expected)=>String(value??'').trim().toUpperCase()===expected;
+const ordered=value=>trackerStatus(value,'ORDERED');
+const received=value=>trackerStatus(value,'RECEIVED');
+export function reconciliationEvidence(milestoneDates={},trackerContext={}){return ariveMilestoneTaskMap.map(([keyDate,taskType,milestone,statusKey,dateKey])=>{const keyAt=milestoneDates[keyDate];const fallbackAt=!keyAt&&statusKey&&ordered(trackerContext[statusKey])?trackerContext[dateKey]??null:null;const titleReceivedFallback=!keyAt&&taskType==='title_follow_up'&&received(trackerContext.titleStatus)?trackerContext.titleTrackerDate??null:null;const completedAt=keyAt??fallbackAt??titleReceivedFallback;return {taskType,milestone,completedAt,evidence:keyAt?'key_date':fallbackAt?'tracker_ordered_date':titleReceivedFallback?'tracker_received_date':null};});}
 export async function reconcileAriveMilestones(executor,{loanId,milestoneDates={},trackerContext={},dryRun=false}){
   const reconciled=[];
   for(const evidence of reconciliationEvidence(milestoneDates,trackerContext)){
