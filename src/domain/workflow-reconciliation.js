@@ -4,6 +4,9 @@ export const ariveMilestoneTaskMap=Object.freeze([
   ['appraisalOrderedDate','order_appraisal','appraisal_ordered','appraisalStatus','appraisalTrackerDate'],
   ['titleOrderedDate','order_title_escrow','title_ordered','titleStatus','titleTrackerDate'],
   ['hoiOrderedDate','request_insurance_eoi','hoi_ordered','hoiStatus','hoiTrackerDate'],
+  ['appraisalReceivedDate','appraisal_follow_up','appraisal_received',null,null],
+  ['titleReceivedDate','title_follow_up','title_received',null,null],
+  ['hoiReceivedDate','insurance_follow_up','hoi_received',null,null],
   ['initialCDSentDate','closing_disclosure_sent','initial_cd_sent',null,null]
 ]);
 const ordered=value=>String(value??'').trim().toUpperCase()==='ORDERED';
