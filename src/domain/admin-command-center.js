@@ -70,3 +70,25 @@ export function buildClosingOutlook({fundingGoal=null,pipelineLoans=[]}={}){
   const source=Array.isArray(pipelineLoans)?pipelineLoans:[],assigned=new Set(),take=stages=>summarizeOutlookBucket(source.filter((loan,index)=>{if(assigned.has(index)||!stages.has(loan.currentStage))return false;assigned.add(index);return true;})),funded={loanCount:fundingGoal?.fundedCount?.actual??null,volume:fundingGoal?.fundedVolume?.actual??null,missingAmountCount:fundingGoal?.fundedVolume?.missingAmountCount??null},highConfidence=take(closingOutlookBuckets.highConfidence),likely=take(closingOutlookBuckets.likely),pipelineOpportunity=take(closingOutlookBuckets.pipelineOpportunity),committed={loanCount:(funded.loanCount??0)+highConfidence.loanCount,volume:(funded.volume??0)+highConfidence.volume,missingAmountCount:(funded.missingAmountCount??0)+highConfidence.missingAmountCount},loanGoal=fundingGoal?.fundedCount?.goal??null,volumeGoal=fundingGoal?.fundedVolume?.goal??null;
   return {fundedMtd:funded,highConfidence,likely,pipelineOpportunity,committedOutlook:committed,goalComparison:{loanGoal,volumeGoal,committedLoanGoalPercent:outlookPercent(committed.loanCount,loanGoal),committedVolumeGoalPercent:outlookPercent(committed.volume,volumeGoal),remainingLoans:outlookGap(loanGoal,committed.loanCount),remainingVolume:outlookGap(volumeGoal,committed.volume)}};
 }
+
+const pipelineWaitingGroups=Object.freeze([
+  {key:'hfnInternal',label:'HFN INTERNAL',categories:new Set(['INTERNAL ACTION'])},
+  {key:'borrower',label:'BORROWER',categories:new Set(['BORROWER / CONDITIONS'])},
+  {key:'lenderUw',label:'LENDER / UW',categories:new Set(['LENDER / UNDERWRITING'])},
+  {key:'thirdParty',label:'THIRD PARTY',categories:new Set(['APPRAISAL','TITLE','INSURANCE','PAYOFF','ESCROW / SETTLEMENT'])},
+  {key:'unknownOther',label:'UNKNOWN / OTHER',categories:new Set(['OTHER / UNKNOWN'])}
+]);
+
+/** A management-only rollup of the established one-category-per-active-loan bottleneck output. */
+export function buildPipelineWaitingSummary(stageAging={}){
+  const categories=(Array.isArray(stageAging.currentBottlenecks)?stageAging.currentBottlenecks:[])
+    .map(item=>({category:item?.category,activeLoans:Number(item?.activeLoans??0)}))
+    .filter(item=>item.category&&Number.isFinite(item.activeLoans)&&item.activeLoans>0);
+  const totalAttributableLoans=categories.reduce((total,item)=>total+item.activeLoans,0);
+  const groupFor=category=>pipelineWaitingGroups.find(group=>group.categories.has(category))?.key??'unknownOther';
+  const groups=pipelineWaitingGroups.map(group=>{
+    const activeLoans=categories.filter(item=>groupFor(item.category)===group.key).reduce((total,item)=>total+item.activeLoans,0);
+    return {key:group.key,label:group.label,activeLoans,percentage:totalAttributableLoans?Math.round(activeLoans/totalAttributableLoans*100):null};
+  });
+  return {totalAttributableLoans,groups,categories};
+}

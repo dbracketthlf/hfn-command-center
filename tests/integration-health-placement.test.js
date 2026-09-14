@@ -17,4 +17,7 @@ test('Integration Health is removed from the public dashboard and rendered in th
   assert.match(admin,/morningCommandBrief\(data\.morningBrief\)/);
   assert.match(admin,/MONTH-END CLOSING OUTLOOK/);
   assert.match(admin,/closingOutlookSection\(data\.closingOutlook\)/);
+  assert.match(admin,/WHERE THE PIPELINE IS WAITING/);
+  assert.match(admin,/pipelineWaitingSection\(data\.pipelineWaiting\)/);
+  assert.doesNotMatch(dashboard,/WHERE THE PIPELINE IS WAITING/);
 });
