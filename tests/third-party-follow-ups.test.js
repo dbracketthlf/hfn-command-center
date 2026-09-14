@@ -5,8 +5,9 @@ import { nextFollowUpAt } from '../src/domain/workflow-engine.js';
 
 const calendar={businessStart:{hour:8,minute:30},businessEnd:{hour:17,minute:0},workdays:[1,2,3,4,5],holidays:['2026-09-14']};
 test('third-party initial tasks have separate persistent follow-up definitions',()=>{
-  assert.deepEqual(Object.entries({order_appraisal:'appraisal_follow_up',order_title_escrow:'title_follow_up',request_insurance_eoi:'insurance_follow_up',order_payoff:'payoff_follow_up'}).map(([initial,successor])=>followUpForInitialTask(initial).taskType),['appraisal_follow_up','title_follow_up','insurance_follow_up','payoff_follow_up']);
+  assert.deepEqual(Object.entries({order_appraisal:'appraisal_follow_up',order_title_escrow:'title_follow_up',request_insurance_eoi:'insurance_follow_up',order_payoff:'payoff_follow_up',order_settlement_statement:'settlement_statement_follow_up'}).map(([initial,successor])=>followUpForInitialTask(initial).taskType),['appraisal_follow_up','title_follow_up','insurance_follow_up','payoff_follow_up','settlement_statement_follow_up']);
 });
+test('settlement statement follow-up uses a two-business-day recurring cadence',()=>{assert.equal(followUpCadence({task_type:'settlement_statement_follow_up'}),2);assert.equal(followUpCadence({task_type:'settlement_statement_follow_up'},{afterFollowUp:true}),2);});
 test('title and payoff use three business-day recurring follow-ups',()=>{
   assert.equal(nextFollowUpAt('2026-09-11T23:00:00.000Z',followUpCadence({task_type:'title_follow_up'}),calendar),'2026-09-17T23:00:00.000Z');
   assert.equal(followUpCadence({task_type:'payoff_follow_up'},{afterFollowUp:true}),3);

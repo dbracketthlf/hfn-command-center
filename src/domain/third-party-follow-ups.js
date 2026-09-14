@@ -23,6 +23,11 @@ export const thirdPartyFollowUps=Object.freeze({
     taskType:'payoff_follow_up',title:'Follow up on payoff',waitingOn:'payoff_provider',
     firstCadenceBusinessDays:3,repeatCadenceBusinessDays:3,phase:'waiting_for_payoff',
     completionKey:null
+  },
+  order_settlement_statement:{
+    taskType:'settlement_statement_follow_up',title:'Follow Up on Settlement Statement',waitingOn:'title_escrow',
+    firstCadenceBusinessDays:2,repeatCadenceBusinessDays:2,phase:'waiting_for_settlement_statement',
+    completionKey:null
   }
 });
 
