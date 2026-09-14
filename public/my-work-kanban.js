@@ -1,11 +1,11 @@
+import { workPriorityKey, workPriorityTime } from './work-priority.js';
 export const kanbanColumns=Object.freeze(['past_due','action_needed','follow_up','waiting']);
 const order=Object.freeze({past_due:0,escalated:1,blocked:2,action_required:3,due_soon:4,follow_up_due:5,waiting:6});
-const timestamp=value=>{const time=new Date(value??'').getTime();return Number.isFinite(time)?time:Infinity;};
-
 export function kanbanColumnFor(task,{now=new Date()}={}){
-  if(task.priority==='past_due'||timestamp(task.dueAt)<now.getTime())return 'past_due';
-  if(['escalated','blocked','action_required','due_soon'].includes(task.priority??task.state))return 'action_needed';
-  if(task.priority==='follow_up_due'||timestamp(task.nextFollowUpAt)<=now.getTime())return 'follow_up';
+  const priority=workPriorityKey(task,{now});
+  if(priority==='past_due')return 'past_due';
+  if(['escalated','blocked','action_required','due_soon'].includes(priority))return 'action_needed';
+  if(priority==='follow_up_due')return 'follow_up';
   return 'waiting';
 }
 
@@ -14,7 +14,7 @@ export function compareWorkTasks(left,right,{now=new Date()}={}){
   if(columnDifference)return columnDifference;
   const urgencyDifference=(order[left.priority]??99)-(order[right.priority]??99);
   if(urgencyDifference)return urgencyDifference;
-  const dueDifference=Math.min(timestamp(left.dueAt),timestamp(left.nextFollowUpAt))-Math.min(timestamp(right.dueAt),timestamp(right.nextFollowUpAt));
+  const dueDifference=Math.min(workPriorityTime(left.dueAt),workPriorityTime(left.nextFollowUpAt))-Math.min(workPriorityTime(right.dueAt),workPriorityTime(right.nextFollowUpAt));
   if(dueDifference)return dueDifference;
   return String(left.id??'').localeCompare(String(right.id??''));
 }

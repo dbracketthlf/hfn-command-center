@@ -9,3 +9,15 @@ export function loadRuntimeConfig(env=process.env) {
 export function postgresPoolOptions(config) {
   return { connectionString:config.databaseUrl, ssl:config.production ? { rejectUnauthorized:false } : undefined };
 }
+
+/** External Render test databases use Render-managed TLS. Keep this strict and scoped to integration tests. */
+export function postgresTestClientOptions(databaseUrl) {
+  if(!databaseUrl)throw new Error('TEST_DATABASE_URL is required');
+  const url=new URL(databaseUrl),sslmode=String(url.searchParams.get('sslmode')??'').toLowerCase();
+  if(sslmode==='disable')throw new Error('TEST_DATABASE_URL must not disable TLS');
+  // pg lets URL SSL parameters overwrite the explicit ssl object. The external
+  // Render certificate is publicly trusted, so negotiate TLS explicitly and
+  // retain normal certificate verification.
+  url.searchParams.delete('sslmode');
+  return {connectionString:url.toString(),ssl:{rejectUnauthorized:true}};
+}

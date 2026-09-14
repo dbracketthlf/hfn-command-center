@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { buildTodaysPriorities } from '../public/my-work-priorities.js';
+import { buildTodaysPriorities, priorityForTask } from '../public/my-work-priorities.js';
 
 const now=new Date('2026-09-15T20:00:00.000Z');
 const task=(id,displayLoanId,overrides={})=>({id,displayLoanId,borrowerName:'Private Borrower',currentStage:'UNDERWRITING_SUBMITTED',title:'Safe workflow task',state:'waiting',priority:'waiting',dueAt:'2026-09-18T20:00:00.000Z',...overrides});
@@ -33,6 +33,12 @@ test('earliest due time breaks equal urgency ties and future waiting work cannot
     task('waiting','future-wait',{state:'waiting',priority:'waiting',nextFollowUpAt:'2026-09-18T20:00:00Z'})
   ];
   const priorities=buildTodaysPriorities(tasks,{now});assert.equal(priorities.all.findIndex(item=>item.displayLoanId==='b')<priorities.all.findIndex(item=>item.displayLoanId==='a'),true);assert.equal(ids(priorities.top).includes('future-wait'),false);assert.equal(priorities.top.length,5);
+});
+
+test('waiting follow-ups remain Follow-Up Due while overdue employee actions remain Past Due',()=>{
+  const follow=task('follow','1',{dueAt:'2026-09-14T20:00:00Z',nextFollowUpAt:'2026-09-14T20:00:00Z'}),action=task('action','2',{state:'action_required',priority:'action_required',dueAt:'2026-09-14T20:00:00Z'}),blocked=task('blocked','3',{state:'blocked',priority:'blocked',dueAt:'2026-09-16T20:00:00Z'}),escalated=task('escalated','4',{state:'escalated',priority:'escalated',dueAt:'2026-09-16T20:00:00Z'});
+  assert.equal(priorityForTask(follow,{now}).key,'follow_up_due');assert.equal(priorityForTask(action,{now}).key,'past_due');assert.equal(priorityForTask(blocked,{now}).key,'blocked');assert.equal(priorityForTask(escalated,{now}).key,'escalated');
+  assert.deepEqual(ids(buildTodaysPriorities([follow,action],{now}).all),['2','1']);
 });
 
 test('priority section reuses the existing drawer target and private-only borrower rendering',async()=>{
