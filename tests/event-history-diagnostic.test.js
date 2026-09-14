@@ -1,0 +1,26 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
+import { safeInboundEventHistory } from '../src/domain/event-history-diagnostic.js';
+import { inboundRequestMetadata, redactedAuditPayload } from '../src/integrations/arive.js';
+
+test('event history exposes only allowlisted safe fields and distinguishes absent, null, and value',()=>{const [event]=safeInboundEventHistory([{id:'event-1',receivedAt:'2026-09-13T23:42:49.402Z',source:'zapier-arive',processingStatus:'processed',currentLoanStatus:'UNDERWRITING_SUBMITTED',trackerContext:{titleStatus:'RECEIVED',titleTrackerDate:null,borrowerEmail:'not-allowed@example.test'},milestoneDates:{titleOrderedDate:'2026-09-10',borrowerName:'Not Allowed'}}]);assert.deepEqual(event.trackerContext.titleStatus,{state:'VALUE',value:'RECEIVED'});assert.deepEqual(event.trackerContext.titleTrackerDate,{state:'NULL'});assert.deepEqual(event.trackerContext.hoiStatus,{state:'ABSENT'});assert.deepEqual(event.milestoneDates.titleOrderedDate,{state:'VALUE',value:'2026-09-10'});assert.deepEqual(event.milestoneDates.titleReceivedDate,{state:'ABSENT'});assert.equal(JSON.stringify(event).includes('not-allowed@example.test'),false);});
+test('event-history command is single-loan and has no apply mode',async()=>{const script=await readFile(new URL('../scripts/workflow-diagnose-events.mjs',import.meta.url),'utf8');assert.match(script,/--loan/);assert.doesNotMatch(script,/--apply|insert\s+into|update\s+|delete\s+/i);});
+test('request-shape observability captures only allowlisted top-level operational presence before normalization',()=>{const payload={ariveLoanId:'safe-guid',titleStatus:'RECEIVED',titleReceivedDate:'2026-09-11',hoiStatus:null,data:{borrowerEmail:'not-retained@example.test'},borrowerFirstName:'Not Retained',unknownBorrowerField:'Not Retained',triggerSource:'loan-trackers-updated',zapierEventId:'zap-run-123'};
+  const metadata=inboundRequestMetadata(payload);
+  assert.equal(metadata.incomingFieldPresence.titleStatus,true);
+  assert.equal(metadata.incomingFieldPresence.titleReceivedDate,true);
+  assert.equal(metadata.incomingFieldPresence.titleDate,false);
+  assert.equal(metadata.incomingFieldPresence.hoiStatus,true);
+  assert.deepEqual(metadata.topLevelKeys,['titleStatus','titleReceivedDate','hoiStatus']);
+  assert.deepEqual(metadata.payloadStructure,{hasData:true,hasFields:false,hasLoan:false});
+  assert.equal(metadata.triggerSource,'loan-trackers-updated');
+  assert.equal(metadata.suppliedEventId,'zap-run-123');
+  const audit=redactedAuditPayload(payload);
+  assert.deepEqual(audit.incomingFieldPresence,metadata.incomingFieldPresence);
+  assert.equal(JSON.stringify(audit).includes('unknownBorrowerField'),false);
+  assert.equal(JSON.stringify(audit).includes('not-retained@example.test'),false);
+  assert.equal(JSON.stringify(audit).includes('Not Retained'),false);
+});
+test('event history marks pre-observability rows unavailable without guessing their request shape',()=>{const [event]=safeInboundEventHistory([{id:'historic',receivedAt:'2026-09-13T23:42:49.402Z',source:'zapier-arive',sourceEventId:'safe-event-id',trackerContext:{},milestoneDates:{}}]);assert.equal(event.incomingFieldPresence,'UNAVAILABLE_FOR_HISTORICAL_EVENT');assert.equal(event.topLevelKeys,'UNAVAILABLE_FOR_HISTORICAL_EVENT');assert.equal(event.payloadStructure,'UNAVAILABLE_FOR_HISTORICAL_EVENT');assert.equal(event.sourceEventId,'safe-event-id');});
+test('event history exposes future request-shape metadata and safe correlation fields',()=>{const [event]=safeInboundEventHistory([{id:'event-2',receivedAt:'2026-09-14T00:00:00Z',source:'zapier-arive',sourceEventId:'stored-id',triggerSource:'loan-trackers-updated',suppliedEventId:'zap-run-456',incomingFieldPresence:{titleStatus:true,titleDate:false,titleOrderedDate:true,titleReceivedDate:true},topLevelKeys:['titleStatus','titleOrderedDate','titleReceivedDate'],payloadStructure:{hasData:false,hasFields:false,hasLoan:false},trackerContext:{titleStatus:'RECEIVED'},milestoneDates:{titleReceivedDate:'2026-09-11'}}]);assert.equal(event.sourceEventId,'stored-id');assert.equal(event.triggerSource,'loan-trackers-updated');assert.equal(event.suppliedEventId,'zap-run-456');assert.equal(event.incomingFieldPresence.titleReceivedDate,true);assert.deepEqual(event.topLevelKeys,['titleStatus','titleOrderedDate','titleReceivedDate']);assert.deepEqual(event.payloadStructure,{hasData:false,hasFields:false,hasLoan:false});});

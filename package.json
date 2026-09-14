@@ -3,6 +3,6 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "scripts": { "start": "node server.mjs", "test": "node --test", "db:migrate": "node scripts/migrate.mjs", "funding:backfill": "node scripts/funding-backfill.mjs", "workflow:hydrate": "node scripts/workflow-hydrate.mjs", "workflow:reconcile": "node scripts/workflow-reconcile.mjs", "workflow:recover-follow-ups": "node scripts/workflow-recover-follow-ups.mjs", "workflow:recover-operational-snapshot": "node scripts/workflow-recover-operational-snapshot.mjs", "workflow:diagnose": "node scripts/workflow-diagnose.mjs", "auth:bootstrap-admin": "node scripts/bootstrap-admin.mjs" },
+  "scripts": { "start": "node server.mjs", "test": "node --test", "db:migrate": "node scripts/migrate.mjs", "funding:backfill": "node scripts/funding-backfill.mjs", "workflow:hydrate": "node scripts/workflow-hydrate.mjs", "workflow:reconcile": "node scripts/workflow-reconcile.mjs", "workflow:recover-follow-ups": "node scripts/workflow-recover-follow-ups.mjs", "workflow:recover-operational-snapshot": "node scripts/workflow-recover-operational-snapshot.mjs", "workflow:diagnose": "node scripts/workflow-diagnose.mjs", "workflow:diagnose-events": "node scripts/workflow-diagnose-events.mjs", "auth:bootstrap-admin": "node scripts/bootstrap-admin.mjs" },
   "dependencies": { "pg": "^8.16.3" }
 }

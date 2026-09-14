@@ -5,7 +5,35 @@ const value = (payload, ...names) => names.map(name => payload[name]).find(item 
 const statusMap = Object.freeze({ LOAN_SETUP:'LOAN_SETUP', DISCLOSED:'DISCLOSED', ITP_SIGNED:'ITP_SIGNED', UNDERWRITING_SUBMITTED:'UNDERWRITING_SUBMITTED', APPROVED_WITH_CONDITION:'APPROVED_WITH_CONDITION', RE_SUBMITTAL:'RE_SUBMITTAL', CLEAR_TO_CLOSE:'CLEAR_TO_CLOSE', DOCS_OUT:'DOCS_OUT', DOCS_SIGNED:'DOCS_SIGNED', LOAN_FUNDED:'LOAN_FUNDED' });
 const digest = payload => createHash('sha256').update(JSON.stringify(payload) ?? 'null').digest('hex');
 const eventId = payload => value(payload, 'zapierEventId', 'zapier_event_id', 'eventId', 'event_id') ?? digest(payload);
+const suppliedEventId = payload => value(payload, 'zapierEventId', 'zapier_event_id', 'eventId', 'event_id');
 const text = item => typeof item === 'string' ? item.trim() : item;
+const observableOperationalKeys=Object.freeze([
+  'titleStatus','titleDate','titleOrderedDate','titleReceivedDate',
+  'appraisalStatus','appraisalDate','appraisalOrderedDate','appraisalReceivedDate',
+  'hoiStatus','hoiDate','hoiOrderedDate','hoiReceivedDate','initialCDSentDate'
+]);
+const hasOwn=(record,key)=>Object.hasOwn(record??{},key);
+const safeTriggerSource=payload=>{
+  const source=text(value(payload,'triggerSource','trigger_source'));
+  return typeof source==='string'&&source.length<=120?source:null;
+};
+/**
+ * Privacy-safe request-shape observability. This intentionally runs on the
+ * original top-level request object before normalization, but exposes neither
+ * values nor arbitrary keys.
+ */
+export function inboundRequestMetadata(payload) {
+  const request=payload&&typeof payload==='object'&&!Array.isArray(payload)?payload:{};
+  const topLevelKeys=observableOperationalKeys.filter(key=>hasOwn(request,key));
+  const explicitEventId=suppliedEventId(request);
+  return {
+    incomingFieldPresence:Object.fromEntries(observableOperationalKeys.map(key=>[key,hasOwn(request,key)])),
+    topLevelKeys,
+    payloadStructure:{hasData:hasOwn(request,'data'),hasFields:hasOwn(request,'fields'),hasLoan:hasOwn(request,'loan')},
+    triggerSource:safeTriggerSource(request),
+    suppliedEventId:explicitEventId??null
+  };
+}
 function teamUsersFromSlots(payload) { const users=[]; for(let slot=1;slot<=10;slot++){const firstName=text(payload[`loanTeamUser${slot}FirstName`]),lastName=text(payload[`loanTeamUser${slot}LastName`]),email=text(payload[`loanTeamUser${slot}Email`]),role=text(payload[`loanTeamUser${slot}Role`]);if(firstName||lastName||email||role)users.push({firstName,lastName,email,role,name:[firstName,lastName].filter(Boolean).join(' ')});} return users; }
 const processorAssistantRole = 'AssistantProcessor';
 /**
@@ -35,7 +63,7 @@ export const payloadIdempotencyKey = eventId;
 export const payloadFingerprint = digest;
 export const supportedEventType = status => statusMap[status];
 /** No passthrough: audit storage is an operational allowlist, never a modified raw payload. */
-export function redactedAuditPayload(payload, receivedAt) { const loan=normalizeArivePayload(payload,receivedAt); return {ariveSystemGuid:loan.systemGuid,ariveDisplayLoanId:loan.displayLoanId,currentLoanStatus:loan.currentStatus,currentLoanStatusDate:loan.statusAt,loanUpdatedAt:loan.updatedAt,processor:loan.processor,processorEmail:loan.processorEmail,processorAssistant:loan.assistant,processorAssistantEmail:loan.assistantEmail,assignmentException:loan.assistantException,loanTeamRoles:loan.teamUsers.map(member=>({name:member.name,email:member.email,role:member.role})),propertyCity:loan.city,propertyState:loan.state,loanPurpose:loan.purpose,mortgageType:loan.mortgageType,loanAmount:loan.loanAmount,milestoneDates:loan.milestoneDates,trackerContext:loan.trackerContext}; }
+export function redactedAuditPayload(payload, receivedAt) { const requestMetadata=inboundRequestMetadata(payload),loan=normalizeArivePayload(payload,receivedAt); return {ariveSystemGuid:loan.systemGuid,ariveDisplayLoanId:loan.displayLoanId,currentLoanStatus:loan.currentStatus,currentLoanStatusDate:loan.statusAt,loanUpdatedAt:loan.updatedAt,processor:loan.processor,processorEmail:loan.processorEmail,processorAssistant:loan.assistant,processorAssistantEmail:loan.assistantEmail,assignmentException:loan.assistantException,loanTeamRoles:loan.teamUsers.map(member=>({name:member.name,email:member.email,role:member.role})),propertyCity:loan.city,propertyState:loan.state,loanPurpose:loan.purpose,mortgageType:loan.mortgageType,loanAmount:loan.loanAmount,milestoneDates:loan.milestoneDates,trackerContext:loan.trackerContext,incomingFieldPresence:requestMetadata.incomingFieldPresence,topLevelKeys:requestMetadata.topLevelKeys,payloadStructure:requestMetadata.payloadStructure,triggerSource:requestMetadata.triggerSource,suppliedEventId:requestMetadata.suppliedEventId}; }
 
 export function createAriveStore() {
   return { audits: [], loans: new Map(), assignments: new Map(), integration: emptyIntegrationState() };
