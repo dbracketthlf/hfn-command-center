@@ -1,0 +1,17 @@
+import { dueAt } from './sla.js';
+
+const date=value=>{const result=new Date(value??'');return Number.isFinite(result.getTime())?result:null;};
+const pacificDay=value=>{const instant=date(value);if(!instant)return null;const parts=new Intl.DateTimeFormat('en-US',{timeZone:'America/Los_Angeles',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(instant),get=type=>Number(parts.find(part=>part.type===type)?.value);return Date.UTC(get('year'),get('month')-1,get('day'));};
+const elapsed=(start,end)=>{const a=pacificDay(start),b=pacificDay(end);return Number.isFinite(a)&&Number.isFinite(b)&&b>=a?Math.floor((b-a)/86400000):null;};
+const median=values=>{if(!values.length)return null;const sorted=[...values].sort((a,b)=>a-b),mid=Math.floor(sorted.length/2);return Number((sorted.length%2?sorted[mid]:(sorted[mid-1]+sorted[mid])/2).toFixed(1));};
+const disclosureEvent=event=>['DISCLOSURE_SENT','DISCLOSED'].includes(event.eventType);
+const status=(setupAt,now,calendar)=>{if(!date(setupAt))return 'TIMING_UNAVAILABLE';const due=dueAt(setupAt,{kind:'businessHours',value:8.5},calendar),stalled=dueAt(due,{kind:'businessHours',value:8.5},calendar);return new Date(now)>stalled?'STALLED':new Date(now)>due?'AGING':'NORMAL';};
+
+/** Read-only front-end processing analytics; it deliberately has no KPI output. */
+export function buildSetupDisclosureAnalytics(rows=[],{now=new Date(),calendar={}}={}){
+  const loans=new Map();for(const row of rows){const key=row.loanId??row.displayLoanId;if(!key)continue;const loan=loans.get(key)??{loanId:row.loanId,displayLoanId:row.displayLoanId,currentStage:row.currentStage,processor:row.processor??null,assistant:row.assistant??null,events:[]};if(row.eventType&&row.occurredAt)loan.events.push({eventType:row.eventType,occurredAt:row.occurredAt});loans.set(key,loan);}
+  const completed=[],waiting=[];
+  for(const loan of loans.values()){loan.events.sort((a,b)=>date(a.occurredAt)-date(b.occurredAt));const setup=loan.events.find(event=>event.eventType==='LOAN_SETUP'),disclosure=setup&&loan.events.find(event=>disclosureEvent(event)&&date(event.occurredAt)>=date(setup.occurredAt));if(setup&&disclosure){const calendarDays=elapsed(setup.occurredAt,disclosure.occurredAt);if(calendarDays!==null)completed.push({calendarDays,withinTarget:new Date(disclosure.occurredAt)<=dueAt(setup.occurredAt,{kind:'businessHours',value:8.5},calendar)});}if(loan.currentStage==='LOAN_SETUP'&&!disclosure){const state=status(setup?.occurredAt,now,calendar);waiting.push({...loan,setupAt:setup?.occurredAt??null,elapsedCalendarDays:elapsed(setup?.occurredAt,now),agingStatus:state,dueAt:setup?dueAt(setup.occurredAt,{kind:'businessHours',value:8.5},calendar).toISOString():null});}}
+  const values=completed.map(item=>item.calendarDays),byStatus=state=>waiting.filter(item=>item.agingStatus===state).length;
+  return {target:'1 business day',historical:{eligibleObservations:completed.length,averageCalendarDays:values.length?Number((values.reduce((sum,value)=>sum+value,0)/values.length).toFixed(1)):null,medianCalendarDays:median(values),exceedingOneBusinessDay:completed.filter(item=>!item.withinTarget).length},current:{waitingForDisclosures:waiting.length,normal:byStatus('NORMAL'),aging:byStatus('AGING'),stalled:byStatus('STALLED'),timingUnavailable:byStatus('TIMING_UNAVAILABLE'),longestAgingLoans:waiting.filter(item=>item.elapsedCalendarDays!==null).sort((a,b)=>b.elapsedCalendarDays-a.elapsedCalendarDays).slice(0,10)}};
+}

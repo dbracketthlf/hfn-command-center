@@ -14,12 +14,12 @@ export async function enrichPrivateQueue(pool,queue){
 
 /** Borrower names are joined only after an authenticated admin command-center request. */
 export async function enrichPrivateAdminCommandCenter(pool,center){
-  const lenderLoans=(center.lenderPerformance?.lenders??[]).flatMap(item=>item.activeLoanDetails??[]);
-  const ids=[...new Set([...(center.escalations??[]),...(center.stageAging?.longestAgingLoans??[]),...lenderLoans].map(item=>item.displayLoanId).filter(Boolean))];
+  const lenderLoans=(center.lenderPerformance?.lenders??[]).flatMap(item=>item.activeLoanDetails??[]),setupLoans=center.setupDisclosure?.current?.longestAgingLoans??[];
+  const ids=[...new Set([...(center.escalations??[]),...(center.stageAging?.longestAgingLoans??[]),...lenderLoans,...setupLoans].map(item=>item.displayLoanId).filter(Boolean))];
   if(!ids.length)return center;
   const result=await pool.query('select arive_display_loan_id,borrower_first_name,borrower_last_name from loans where arive_display_loan_id=any($1)',[ids]);
   const names=new Map(result.rows.map(row=>[row.arive_display_loan_id,[row.borrower_first_name,row.borrower_last_name].filter(Boolean).join(' ')||null]));
-  return {...center,escalations:center.escalations.map(item=>({...item,borrowerName:names.get(item.displayLoanId)??null})),stageAging:center.stageAging?{...center.stageAging,longestAgingLoans:center.stageAging.longestAgingLoans.map(item=>({...item,borrowerName:names.get(item.displayLoanId)??null}))}:center.stageAging,lenderPerformance:center.lenderPerformance?{...center.lenderPerformance,lenders:center.lenderPerformance.lenders.map(lender=>({...lender,activeLoanDetails:lender.activeLoanDetails.map(item=>({...item,borrowerName:names.get(item.displayLoanId)??null}))}))}:center.lenderPerformance};
+  return {...center,escalations:center.escalations.map(item=>({...item,borrowerName:names.get(item.displayLoanId)??null})),stageAging:center.stageAging?{...center.stageAging,longestAgingLoans:center.stageAging.longestAgingLoans.map(item=>({...item,borrowerName:names.get(item.displayLoanId)??null}))}:center.stageAging,setupDisclosure:center.setupDisclosure?{...center.setupDisclosure,current:{...center.setupDisclosure.current,longestAgingLoans:center.setupDisclosure.current.longestAgingLoans.map(item=>({...item,borrowerName:names.get(item.displayLoanId)??null}))}}:center.setupDisclosure,lenderPerformance:center.lenderPerformance?{...center.lenderPerformance,lenders:center.lenderPerformance.lenders.map(lender=>({...lender,activeLoanDetails:lender.activeLoanDetails.map(item=>({...item,borrowerName:names.get(item.displayLoanId)??null}))}))}:center.lenderPerformance};
 }
 
 export async function manualTaskOptions(pool,employee){
