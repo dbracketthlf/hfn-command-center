@@ -41,6 +41,8 @@ test('waiting follow-ups remain Follow-Up Due while overdue employee actions rem
   assert.deepEqual(ids(buildTodaysPriorities([follow,action],{now}).all),['2','1']);
 });
 
+test('a blocked task retains its due date and becomes Past Due when that due date elapses',()=>{const blocked=task('blocked-overdue','5',{state:'blocked',priority:'blocked',dueAt:'2026-09-14T20:00:00Z'});assert.equal(blocked.dueAt,'2026-09-14T20:00:00Z');assert.equal(priorityForTask(blocked,{now}).key,'past_due');});
+
 test('priority section reuses the existing drawer target and private-only borrower rendering',async()=>{
   const script=await readFile(new URL('../public/my-work.js',import.meta.url),'utf8');assert.match(script,/TODAY'S PRIORITIES/);assert.match(script,/TODAY'S TEAM PRIORITIES/);assert.match(script,/data-loan-card/);assert.match(script,/View All Priorities/);assert.match(script,/ownerName/);
 });

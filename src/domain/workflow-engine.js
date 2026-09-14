@@ -3,6 +3,8 @@ import { dueAt } from './sla.js';
 export const workflowTaskStates=Object.freeze(['action_required','waiting','follow_up_due','due_soon','past_due','blocked','escalated','completed','cancelled','not_applicable']);
 export const workflowOrigins=Object.freeze(['automatic','manual','conditional']);
 export const ownerRoles=Object.freeze(['processor','processor_assistant','loan_officer','management','system']);
+export const blockerCategories=Object.freeze(['borrower','vendor','lender','ARIVE/system','internal','other']);
+export function validateBlockDetails({blockedCategory,note}) { if(!blockerCategories.includes(blockedCategory))throw new Error('Blocked category is required');const blockedReason=typeof note==='string'?note.trim():'';if(!blockedReason)throw new Error('Blocked reason is required');if(blockedReason.length>500)throw new Error('Blocked reason must be 500 characters or fewer');return {blockedCategory,blockedReason}; }
 export const safeWorkflowMetadata=value=>Object.fromEntries(Object.entries(value??{}).filter(([key,item])=>['sourceEvent','tracker','conditionReference','checklistContext','previousState','resultingState','lastFollowUpAt','nextFollowUpAt','followUpCount','waitingOn','followUpPhase','workflowCycle'].includes(key)&&(typeof item!=='object'||key==='checklistContext')));
 export const businessDeadline=(start,businessDays,calendar)=>businessDays===null||businessDays===undefined?null:dueAt(start,{kind:'businessHours',value:businessDays*8.5},calendar).toISOString();
 export const nextFollowUpAt=(from,cadenceBusinessDays,calendar)=>cadenceBusinessDays?businessDeadline(from,cadenceBusinessDays,calendar):null;
