@@ -15,4 +15,6 @@ test('Integration Health is removed from the public dashboard and rendered in th
   assert.match(admin,/integrationHealthSection\(data\.integrationHealth\)/);
   assert.match(admin,/MORNING COMMAND BRIEF/);
   assert.match(admin,/morningCommandBrief\(data\.morningBrief\)/);
+  assert.match(admin,/MONTH-END CLOSING OUTLOOK/);
+  assert.match(admin,/closingOutlookSection\(data\.closingOutlook\)/);
 });

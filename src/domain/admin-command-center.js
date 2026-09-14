@@ -58,3 +58,15 @@ export function buildMorningCommandBrief(center={},dashboard=null,health=null){
     systemStatus:health?.connectionStatus&&health?.lastEventReceived?{connectionStatus:health.connectionStatus,lastEventReceived:health.lastEventReceived}:null
   };
 }
+
+const closingOutlookBuckets=Object.freeze({highConfidence:new Set(['CLEAR_TO_CLOSE','DOCS_OUT','DOCS_SIGNED']),likely:new Set(['APPROVED_WITH_CONDITION','RE_SUBMITTAL']),pipelineOpportunity:new Set(['UNDERWRITING_SUBMITTED'])});
+const validLoanAmount=value=>{const parsed=Number(value);return Number.isFinite(parsed)&&parsed>0?parsed:null;};
+const summarizeOutlookBucket=loans=>{const values=loans.map(loan=>validLoanAmount(loan.loanAmount));return {loanCount:loans.length,volume:values.reduce((total,value)=>total+(value??0),0),missingAmountCount:values.filter(value=>value===null).length};};
+const outlookPercent=(actual,goal)=>Number.isFinite(goal)&&goal>0?Math.round(actual/goal*100):null;
+const outlookGap=(goal,actual)=>Number.isFinite(goal)&&goal>0?Math.max(0,goal-actual):null;
+
+/** Stage-position outlook only. It intentionally makes no probability or closing-date claim. */
+export function buildClosingOutlook({fundingGoal=null,pipelineLoans=[]}={}){
+  const source=Array.isArray(pipelineLoans)?pipelineLoans:[],assigned=new Set(),take=stages=>summarizeOutlookBucket(source.filter((loan,index)=>{if(assigned.has(index)||!stages.has(loan.currentStage))return false;assigned.add(index);return true;})),funded={loanCount:fundingGoal?.fundedCount?.actual??null,volume:fundingGoal?.fundedVolume?.actual??null,missingAmountCount:fundingGoal?.fundedVolume?.missingAmountCount??null},highConfidence=take(closingOutlookBuckets.highConfidence),likely=take(closingOutlookBuckets.likely),pipelineOpportunity=take(closingOutlookBuckets.pipelineOpportunity),committed={loanCount:(funded.loanCount??0)+highConfidence.loanCount,volume:(funded.volume??0)+highConfidence.volume,missingAmountCount:(funded.missingAmountCount??0)+highConfidence.missingAmountCount},loanGoal=fundingGoal?.fundedCount?.goal??null,volumeGoal=fundingGoal?.fundedVolume?.goal??null;
+  return {fundedMtd:funded,highConfidence,likely,pipelineOpportunity,committedOutlook:committed,goalComparison:{loanGoal,volumeGoal,committedLoanGoalPercent:outlookPercent(committed.loanCount,loanGoal),committedVolumeGoalPercent:outlookPercent(committed.volume,volumeGoal),remainingLoans:outlookGap(loanGoal,committed.loanCount),remainingVolume:outlookGap(volumeGoal,committed.volume)}};
+}
