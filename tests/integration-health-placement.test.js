@@ -19,5 +19,9 @@ test('Integration Health is removed from the public dashboard and rendered in th
   assert.match(admin,/closingOutlookSection\(data\.closingOutlook\)/);
   assert.match(admin,/WHERE THE PIPELINE IS WAITING/);
   assert.match(admin,/pipelineWaitingSection\(data\.pipelineWaiting\)/);
+  assert.match(admin,/LOANS MOST AT RISK/);
+  assert.match(admin,/escalations\.slice\(0,5\)/);
+  assert.match(admin,/Next action unavailable/);
   assert.doesNotMatch(dashboard,/WHERE THE PIPELINE IS WAITING/);
+  assert.doesNotMatch(dashboard,/LOANS MOST AT RISK/);
 });
