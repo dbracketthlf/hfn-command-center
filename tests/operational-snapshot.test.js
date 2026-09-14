@@ -13,3 +13,8 @@ test('new non-null safe operational values replace an older value without accept
   const merged=mergeOperationalSnapshot({milestoneDates:{titleReceivedDate:'2026-09-11'},trackerContext:{titleStatus:'ORDERED',privateNote:'no'}},{milestoneDates:{titleReceivedDate:'2026-09-12',borrowerEmail:'not-allowed'},trackerContext:{titleStatus:'RECEIVED',rawPayload:'not-allowed'}});
   assert.deepEqual(merged,{milestoneDates:{titleReceivedDate:'2026-09-12'},trackerContext:{titleStatus:'RECEIVED'}});
 });
+test('safe lender/investor data is retained across partial operational snapshots',()=>{
+  const first=mergeOperationalSnapshot({}, {lenderInvestorName:'HFN Approved Lender'});
+  assert.equal(mergeOperationalSnapshot(first,{milestoneDates:{},trackerContext:{}}).lenderInvestorName,'HFN Approved Lender');
+  assert.equal(mergeOperationalSnapshot(first,{lenderInvestorName:'Updated Approved Lender'}).lenderInvestorName,'Updated Approved Lender');
+});

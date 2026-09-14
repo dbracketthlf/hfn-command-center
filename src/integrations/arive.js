@@ -10,7 +10,7 @@ const text = item => typeof item === 'string' ? item.trim() : item;
 const observableOperationalKeys=Object.freeze([
   'titleStatus','titleDate','titleOrderedDate','titleReceivedDate',
   'appraisalStatus','appraisalDate','appraisalOrderedDate','appraisalReceivedDate',
-  'hoiStatus','hoiDate','hoiOrderedDate','hoiReceivedDate','initialCDSentDate'
+  'hoiStatus','hoiDate','hoiOrderedDate','hoiReceivedDate','initialCDSentDate','lenderInvestorName'
 ]);
 const hasOwn=(record,key)=>Object.hasOwn(record??{},key);
 const safeTriggerSource=payload=>{
@@ -57,13 +57,14 @@ export function normalizeArivePayload(payload, receivedAt) {
   const loanAmount=Number(value(payload,'loanAmount','Loan Amount','loan_amount'));
   const borrowerFirstName=text(value(payload,'borrowerFirstName','primaryBorrowerFirstName','Borrower First Name')),
     borrowerLastName=text(value(payload,'borrowerLastName','primaryBorrowerLastName','Borrower Last Name'));
-  return { systemGuid, displayLoanId, currentStatus, statusAt, updatedAt, processor, processorEmail, assistant, assistantEmail, assistantException:assignment.exception, teamUsers, city:text(value(payload, 'subjectProperty_city')), state:text(value(payload, 'subjectProperty_state')), purpose:text(value(payload, 'loanPurpose')), mortgageType:text(value(payload, 'mortgageType')), loanAmount:Number.isFinite(loanAmount)&&loanAmount>0?loanAmount:null, borrowerFirstName, borrowerLastName, milestoneDates, trackerContext };
+  const lenderInvestorName=text(value(payload,'lenderInvestorName'));
+  return { systemGuid, displayLoanId, currentStatus, statusAt, updatedAt, processor, processorEmail, assistant, assistantEmail, assistantException:assignment.exception, teamUsers, city:text(value(payload, 'subjectProperty_city')), state:text(value(payload, 'subjectProperty_state')), purpose:text(value(payload, 'loanPurpose')), mortgageType:text(value(payload, 'mortgageType')), loanAmount:Number.isFinite(loanAmount)&&loanAmount>0?loanAmount:null, lenderInvestorName, borrowerFirstName, borrowerLastName, milestoneDates, trackerContext };
 }
 export const payloadIdempotencyKey = eventId;
 export const payloadFingerprint = digest;
 export const supportedEventType = status => statusMap[status];
 /** No passthrough: audit storage is an operational allowlist, never a modified raw payload. */
-export function redactedAuditPayload(payload, receivedAt) { const requestMetadata=inboundRequestMetadata(payload),loan=normalizeArivePayload(payload,receivedAt); return {ariveSystemGuid:loan.systemGuid,ariveDisplayLoanId:loan.displayLoanId,currentLoanStatus:loan.currentStatus,currentLoanStatusDate:loan.statusAt,loanUpdatedAt:loan.updatedAt,processor:loan.processor,processorEmail:loan.processorEmail,processorAssistant:loan.assistant,processorAssistantEmail:loan.assistantEmail,assignmentException:loan.assistantException,loanTeamRoles:loan.teamUsers.map(member=>({name:member.name,email:member.email,role:member.role})),propertyCity:loan.city,propertyState:loan.state,loanPurpose:loan.purpose,mortgageType:loan.mortgageType,loanAmount:loan.loanAmount,milestoneDates:loan.milestoneDates,trackerContext:loan.trackerContext,incomingFieldPresence:requestMetadata.incomingFieldPresence,topLevelKeys:requestMetadata.topLevelKeys,payloadStructure:requestMetadata.payloadStructure,triggerSource:requestMetadata.triggerSource,suppliedEventId:requestMetadata.suppliedEventId}; }
+export function redactedAuditPayload(payload, receivedAt) { const requestMetadata=inboundRequestMetadata(payload),loan=normalizeArivePayload(payload,receivedAt); return {ariveSystemGuid:loan.systemGuid,ariveDisplayLoanId:loan.displayLoanId,currentLoanStatus:loan.currentStatus,currentLoanStatusDate:loan.statusAt,loanUpdatedAt:loan.updatedAt,processor:loan.processor,processorEmail:loan.processorEmail,processorAssistant:loan.assistant,processorAssistantEmail:loan.assistantEmail,assignmentException:loan.assistantException,loanTeamRoles:loan.teamUsers.map(member=>({name:member.name,email:member.email,role:member.role})),propertyCity:loan.city,propertyState:loan.state,loanPurpose:loan.purpose,mortgageType:loan.mortgageType,loanAmount:loan.loanAmount,lenderInvestorName:loan.lenderInvestorName,milestoneDates:loan.milestoneDates,trackerContext:loan.trackerContext,incomingFieldPresence:requestMetadata.incomingFieldPresence,topLevelKeys:requestMetadata.topLevelKeys,payloadStructure:requestMetadata.payloadStructure,triggerSource:requestMetadata.triggerSource,suppliedEventId:requestMetadata.suppliedEventId}; }
 
 export function createAriveStore() {
   return { audits: [], loans: new Map(), assignments: new Map(), integration: emptyIntegrationState() };

@@ -5,5 +5,6 @@ const mergeFields=(previous={},incoming={},keys)=>Object.fromEntries(keys.flatMa
 
 /** Safe allowlisted PATCH semantics: omitted/null values never clear prior ARIVE facts. */
 export function mergeOperationalSnapshot(previous={},incoming={}){
-  return {milestoneDates:mergeFields(previous.milestoneDates,incoming.milestoneDates,milestoneKeys),trackerContext:mergeFields(previous.trackerContext,incoming.trackerContext,trackerKeys)};
+  const lenderInvestorName=present(incoming.lenderInvestorName)?incoming.lenderInvestorName:present(previous.lenderInvestorName)?previous.lenderInvestorName:undefined;
+  return {milestoneDates:mergeFields(previous.milestoneDates,incoming.milestoneDates,milestoneKeys),trackerContext:mergeFields(previous.trackerContext,incoming.trackerContext,trackerKeys),...(lenderInvestorName===undefined?{}:{lenderInvestorName})};
 }
