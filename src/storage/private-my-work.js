@@ -12,6 +12,15 @@ export async function enrichPrivateQueue(pool,queue){
   return {...queue,tasks:queue.tasks.map(task=>({...task,borrowerName:names.get(task.displayLoanId)??null}))};
 }
 
+/** Borrower names are joined only after an authenticated admin command-center request. */
+export async function enrichPrivateAdminCommandCenter(pool,center){
+  const ids=[...new Set((center.escalations??[]).map(item=>item.displayLoanId).filter(Boolean))];
+  if(!ids.length)return center;
+  const result=await pool.query('select arive_display_loan_id,borrower_first_name,borrower_last_name from loans where arive_display_loan_id=any($1)',[ids]);
+  const names=new Map(result.rows.map(row=>[row.arive_display_loan_id,[row.borrower_first_name,row.borrower_last_name].filter(Boolean).join(' ')||null]));
+  return {...center,escalations:center.escalations.map(item=>({...item,borrowerName:names.get(item.displayLoanId)??null}))};
+}
+
 export async function manualTaskOptions(pool,employee){
   const ownerField=employee.role==='processor'?'processorEmail':'assistantEmail';
   const where=employee.role==='admin'?'':`and lower(coalesce(e.metadata->>'${ownerField}',''))=lower($1)`;
