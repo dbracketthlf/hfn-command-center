@@ -39,3 +39,22 @@ export function buildAdminCommandCenter(tasks=[],{now=new Date(),activeLoanIds=[
   const employees=[...byEmployee.values()].map(item=>({name:item.name,email:item.email,role:item.role,...capacityForEmployee(item.tasks,{now,activeLoanIds:activeLoanIdsByEmployee[`${item.role}:${item.email??item.name}`]??[]})})).sort((a,b)=>a.role.localeCompare(b.role)||a.name.localeCompare(b.name));const escalations=buildManagementEscalations(open,{now}),loanClocks=new Map();for(const task of open)if(task.displayLoanId&&!loanClocks.has(task.displayLoanId))loanClocks.set(task.displayLoanId,task.ctcClock?.status??null);
   return {summary:{activeLoans:new Set([...activeLoanIds,...open.map(task=>task.displayLoanId).filter(Boolean)]).size,pastDueLoans:new Set(open.filter(task=>isPastDue(task,now)).map(task=>task.displayLoanId)).size,ctcAtRisk:[...loanClocks.values()].filter(status=>status==='AT_RISK').length,ctcCritical:[...loanClocks.values()].filter(status=>status==='CRITICAL').length,managementEscalations:escalations.length},processors:employees.filter(item=>item.role==='processor'),assistants:employees.filter(item=>item.role==='processor_assistant'),escalations};
 }
+
+/** A presentation summary composed exclusively from established management aggregates. */
+export function buildMorningCommandBrief(center={},dashboard=null,health=null){
+  const summary=center.summary??{},employees=[...(center.processors??[]),...(center.assistants??[])],sum=key=>employees.reduce((total,employee)=>total+Number(employee.taskCounts?.[key]??0),0),focus=[
+    {key:'past_due_actions',label:'Employee actions past due',count:sum('pastDue')},
+    {key:'follow_up_due',label:'Follow-ups due',count:sum('followUpDue')},
+    {key:'ctc_critical',label:'CTC Critical',count:Number(summary.ctcCritical??0)},
+    {key:'ctc_at_risk',label:'CTC At Risk',count:Number(summary.ctcAtRisk??0)},
+    {key:'management_escalations',label:'Management escalations',count:Number(summary.managementEscalations??0)},
+    {key:'capacity',label:'Elevated employee capacity',count:employees.filter(employee=>['ELEVATED','HIGH','OVERLOADED'].includes(employee.status)).length}
+  ].filter(item=>item.count>0),funding=dashboard?.fundingGoal,executive=dashboard?.executiveProgress?.currentMonth,ctc=center.ctcPerformance??{},lenders=center.lenderPerformance?.lenders,lenderWaiting=Array.isArray(lenders)?lenders.reduce((total,lender)=>total+Number(lender.currentlyWaitingOnLenderUw??0),0):null;
+  return {
+    headline:{activeLoans:summary.activeLoans??null,managementAttention:summary.managementEscalations??null,ctcAtRisk:summary.ctcAtRisk??null,ctcCritical:summary.ctcCritical??null},
+    focus,
+    monthProgress:{fundedLoans:funding?.fundedCount?.actual??null,fundedVolume:funding?.fundedVolume?.actual??null,loanGoalPercent:funding?.fundedCount?.percent??null,volumeGoalPercent:funding?.fundedVolume?.percent??null,averageUwToCtcDays:executive?.uwToCtc?.averageCalendarDays??null,twentyDayHitRate:executive?.uwToCtc?.hitRate??null},
+    processingPulse:{waitingOnLenderUw:lenderWaiting,ctcOnTrack:ctc.onTrack??null,ctcAtRisk:ctc.atRisk??null,ctcCritical:ctc.critical??null,setupDisclosureStalled:center.setupDisclosure?.current?.stalled??null,bottleneckCategories:center.stageAging?.currentBottlenecks?.length??null},
+    systemStatus:health?.connectionStatus&&health?.lastEventReceived?{connectionStatus:health.connectionStatus,lastEventReceived:health.lastEventReceived}:null
+  };
+}
