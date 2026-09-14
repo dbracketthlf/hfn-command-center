@@ -7,9 +7,8 @@ export const workflowDefinitions=Object.freeze([
   {trigger:'UNDERWRITING_SUBMITTED',type:'order_title_escrow',title:'Order title / escrow',ownerRole:'processor_assistant',businessDays:1,completeOn:['TITLE_ORDERED'],followUpBusinessDays:3,waitingOn:'title_escrow'},
   {trigger:'UNDERWRITING_SUBMITTED',type:'request_insurance_eoi',title:'Request insurance / EOI package',ownerRole:'processor_assistant',businessDays:1,completeOn:['INSURANCE_ORDERED'],followUpBusinessDays:3,waitingOn:'insurance_agent',checklist:['Updated Evidence of Insurance','Replacement Cost Estimator','Insurance Invoice']},
   {trigger:'UNDERWRITING_SUBMITTED',type:'order_payoff',title:'Order payoff',ownerRole:'processor_assistant',businessDays:1,manual:true,followUpBusinessDays:3,waitingOn:'other'},
-  {trigger:'APPROVED_WITH_CONDITION',type:'review_underwriting_approval',title:'Review approval and manage conditions in ARIVE',ownerRole:'processor',businessDays:1},
-  {trigger:'RE_SUBMITTAL',type:'follow_up_clear_to_close',title:'Follow up for Clear to Close',ownerRole:'processor',businessDays:2,completeOn:['CLEAR_TO_CLOSE'],followUpBusinessDays:2,waitingOn:'underwriter'},
-  {trigger:'MANUAL_READY_FOR_RESUBMITTAL',type:'resubmit_conditions_to_uw',title:'Re-submit Conditions to UW',ownerRole:'processor',businessDays:0,completeOn:['RE_SUBMITTAL']},
+  {trigger:'APPROVED_WITH_CONDITION',type:'review_approval_conditions',title:'Review Approval & Conditions',ownerRole:'processor',businessDays:1},
+  {trigger:'MANUAL_READY_FOR_RESUBMITTAL',type:'resubmit_to_underwriting',title:'Re-Submit to Underwriting',ownerRole:'processor',businessDays:0,completeOn:['RE_SUBMITTAL']},
   {trigger:'CLEAR_TO_CLOSE',type:'request_loan_documents',title:'Request loan documents',ownerRole:'processor',businessDays:1,completeOn:['DOCS_OUT']},
   {trigger:'CLEAR_TO_CLOSE',type:'ctc_closing_readiness',title:'CTC closing readiness / verify closing invoices',ownerRole:'processor_assistant',businessDays:0,checklist:['Settlement Statement','Appraisal Invoice','Credit Report Invoice','Flood Cert Invoice','HOA Cert Invoice','Insurance Invoice']},
   {trigger:'DOCS_OUT',type:'confirm_borrower_signing',title:'Follow up with escrow / notary and confirm signing',ownerRole:'processor',businessDays:2,completeOn:['DOCS_SIGNED'],followUpBusinessDays:2,waitingOn:'title_escrow'},
@@ -19,3 +18,4 @@ export const workflowDefinitions=Object.freeze([
 export const definitionsForTrigger=trigger=>workflowDefinitions.filter(definition=>definition.trigger===trigger);
 export const definitionsCompletedBy=trigger=>workflowDefinitions.filter(definition=>definition.completeOn?.includes(trigger));
 export const manualWorkflowTypes=Object.freeze(['ready_for_resubmittal','appraisal_correction','hoa_condo']);
+export const conditionsWorkflowTaskTypes=Object.freeze(['review_approval_conditions','borrower_conditions_follow_up','resubmit_to_underwriting','ctc_follow_up']);

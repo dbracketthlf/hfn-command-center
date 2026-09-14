@@ -26,3 +26,5 @@ test('My Work modal uses associated labels and preserves grouped task rendering'
   assert.match(html,/form-row/);assert.match(html,/my-work-form\.css/);assert.match(formStyles,/grid-template-columns:1\.4fr \.8fr/);assert.match(formStyles,/@media\(max-width:520px\)/);
   assert.match(script,/groupTasksByLoan\(data\.tasks\)/);assert.match(script,/new Map\(\)/);assert.match(script,/tasks\.sort\(taskOrder\)/);assert.match(script,/sort\(\(a,b\)=>taskOrder\(a\[0\],b\[0\]\)\)/);assert.match(script,/loan-header-right/);assert.match(script,/<small class="manual-badge">MANUAL<\/small>/);assert.match(script,/data-cancel-manual/);
 });
+
+test('conditions workflow uses explicit processor actions without changing My Work grouping',async()=>{const script=await readFile(new URL('../public/my-work.js',import.meta.url),'utf8');assert.match(script,/Review Complete/);assert.match(script,/Record Follow-Up/);assert.match(script,/Ready for Re-Submittal/);assert.match(script,/review_complete/);assert.match(script,/ready_for_resubmittal/);});
