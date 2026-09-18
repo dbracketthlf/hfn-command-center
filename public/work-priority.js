@@ -1,7 +1,10 @@
 const time=value=>{const parsed=new Date(value??'').getTime();return Number.isFinite(parsed)?parsed:Infinity;};
+export const terminalWorkTaskStates=Object.freeze(['completed','cancelled','not_applicable']);
+export const isTerminalWorkTask=task=>terminalWorkTaskStates.includes(task?.state);
 
 /** Shared operational priority for browser UI and server-side management views. */
 export function workPriorityKey(task,{now=new Date()}={}){
+  if(isTerminalWorkTask(task))return task.state;
   if(task.state==='follow_up_due'||task.priority==='follow_up_due')return 'follow_up_due';
   const waitingFollowUp=task.state==='waiting'&&time(task.nextFollowUpAt)<=now.getTime();
   if(waitingFollowUp)return 'follow_up_due';
