@@ -108,6 +108,13 @@ export class PostgresAriveRepository {
       fromState=previous;metadata={previousState:previous,resultingState:toState??row.state,lastFollowUpAt:row.last_follow_up_at??at,nextFollowUpAt:row.next_follow_up_at??null,followUpCount:row.follow_up_count??0,waitingOn:row.waiting_on??null};note=null;
     }
     await executor.query('insert into workflow_task_history(id,task_id,occurred_at,action,from_state,to_state,actor_email,note,metadata) values($1,$2,$3,$4,$5,$6,$7,$8,$9)',[randomUUID(),taskId,at,action,fromState,toState,actorEmail,note,safeWorkflowMetadata(metadata)]);
+    if(action==='checklist_changed'){
+      const items=await executor.query('select state from workflow_task_checklist_items where task_id=$1',[taskId]);
+      if(checklistComplete(items.rows)){
+        const completed=await executor.query("update workflow_tasks set state='completed',completed_at=$2,updated_at=now() where id=$1 and state not in ('completed','cancelled','not_applicable') returning state",[taskId,at]);
+        if(completed.rowCount)await executor.query('insert into workflow_task_history(id,task_id,occurred_at,action,from_state,to_state,actor_email,note,metadata) values($1,$2,$3,$4,$5,$6,$7,$8,$9)',[randomUUID(),taskId,at,'checklist_complete',null,'completed',actorEmail,null,safeWorkflowMetadata({})]);
+      }
+    }
     if(action==='completed'||action==='payoff_ordered'||action==='settlement_statement_ordered')await this.createThirdPartyFollowUp(executor,taskId,{at});
   }
   async startConditionsCycle(executor,{loanId,occurredAt,processor,processorEmail,kpiEligible}){
