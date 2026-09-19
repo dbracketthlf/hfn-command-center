@@ -9,10 +9,10 @@ export const workflowDefinitions=Object.freeze([
   {trigger:'UNDERWRITING_SUBMITTED',type:'order_payoff',title:'Order payoff',ownerRole:'processor_assistant',businessDays:1,manual:true,followUpBusinessDays:3,waitingOn:'other'},
   {trigger:'APPROVED_WITH_CONDITION',type:'review_approval_conditions',title:'Review Approval & Conditions',ownerRole:'processor',businessDays:1},
   {trigger:'MANUAL_READY_FOR_RESUBMITTAL',type:'resubmit_to_underwriting',title:'Re-Submit to Underwriting',ownerRole:'processor',businessDays:0,completeOn:['RE_SUBMITTAL']},
-  {trigger:'CLEAR_TO_CLOSE',type:'request_loan_documents',title:'Request loan documents',ownerRole:'processor',businessDays:1,completeOn:['DOCS_OUT']},
+  {trigger:'CLEAR_TO_CLOSE',type:'request_loan_documents',title:'Send loan documents to notary',ownerRole:'processor',businessDays:1,completeOn:['DOCS_OUT']},
   {trigger:'CLEAR_TO_CLOSE',type:'ctc_closing_readiness',title:'CTC closing readiness / verify closing invoices',ownerRole:'processor_assistant',businessDays:0,checklist:['Settlement Statement','Appraisal Invoice','Credit Report Invoice','Flood Cert Invoice','HOA Cert Invoice','Insurance Invoice']},
-  {trigger:'DOCS_OUT',type:'confirm_borrower_signing',title:'Follow up with escrow / notary and confirm signing',ownerRole:'processor',businessDays:2,completeOn:['DOCS_SIGNED'],followUpBusinessDays:2,waitingOn:'title_escrow'},
-  {trigger:'DOCS_SIGNED',type:'clear_funding_requirements',title:'Clear funding requirements and follow through to funding',ownerRole:'processor',businessDays:null,completeOn:['LOAN_FUNDED'],waitingOn:'other'},
+  {trigger:'DOCS_OUT',type:'confirm_borrower_signing',title:'Docs Signed Follow-Up',ownerRole:'processor',businessDays:2,completeOn:['DOCS_SIGNED'],followUpBusinessDays:2,waitingOn:'title_escrow'},
+  {trigger:'DOCS_SIGNED',type:'clear_funding_requirements',title:'Fund Loan',ownerRole:'processor',businessDays:null,completeOn:['LOAN_FUNDED'],waitingOn:'other'},
 ]);
 
 export const definitionsForTrigger=trigger=>workflowDefinitions.filter(definition=>definition.trigger===trigger);
