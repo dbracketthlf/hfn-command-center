@@ -9,8 +9,10 @@ const suppliedEventId = payload => value(payload, 'zapierEventId', 'zapier_event
 const text = item => typeof item === 'string' ? item.trim() : item;
 const observableOperationalKeys=Object.freeze([
   'titleStatus','titleDate','titleOrderedDate','titleReceivedDate',
+  'TITLE_status','TITLE_date',
   'appraisalStatus','appraisalDate','appraisalOrderedDate','appraisalReceivedDate',
-  'hoiStatus','hoiDate','hoiOrderedDate','hoiReceivedDate','initialCDSentDate','lenderInvestorName'
+  'APPRAISAL_status','APPRAISAL_date',
+  'hoiStatus','hoiDate','hoiOrderedDate','hoiReceivedDate','HOI_status','HOI_date','initialCDSentDate','lenderInvestorName'
 ]);
 const hasOwn=(record,key)=>Object.hasOwn(record??{},key);
 const safeTriggerSource=payload=>{
@@ -53,7 +55,7 @@ export function normalizeArivePayload(payload, receivedAt) {
   const processor = text(value(payload, 'loanProcessorName', 'processorName', 'Processor')), processorEmail=text(value(payload,'loanProcessorEmail','processorEmail'));
   const suppliedTeam=value(payload, 'loanTeamUsers', 'loanTeam', 'Loan Team Users'); const teamUsers=Array.isArray(suppliedTeam)?suppliedTeam:teamUsersFromSlots(payload); const assignment=selectProcessorAssistant(teamUsers); const assistant=assignment.assistant?.name??null, assistantEmail=assignment.assistant?.email??null;
   const milestoneDates={initialLESentDate:value(payload,'keyDates_initialLESentDate'),initialLESignedDate:value(payload,'keyDates_initialLESignedDate'),intentToProceedDate:value(payload,'keyDates_intentToProceedDate'),initialCDSentDate:value(payload,'keyDates_initialCDSentDate','initialCDSentDate'),mostRecentCDSentDate:value(payload,'keyDates_mostRecentCDSentDate','mostRecentCDSentDate'),initialCDSignedDate:value(payload,'keyDates_initialCDSignedDate','initialCDSignedDate'),mostRecentCDSignedDate:value(payload,'keyDates_mostRecentCDSignedDate','mostRecentCDSignedDate'),appraisalOrderedDate:value(payload,'keyDates_appraisalOrderedDate','appraisalOrderedDate'),hoiOrderedDate:value(payload,'keyDates_hoiOrderedDate','hoiOrderedDate'),titleOrderedDate:value(payload,'keyDates_titleOrderedDate','titleOrderedDate'),appraisalReceivedDate:value(payload,'keyDates_appraisalDeliveryDate','appraisalReceivedDate'),hoiReceivedDate:value(payload,'keyDates_hoiReceivedDate','hoiReceivedDate'),titleReceivedDate:value(payload,'keyDates_titleReceivedDate','titleReceivedDate')};
-  const trackerContext={appraisalStatus:value(payload,'appraisalStatus','APPRAISAL Status'),appraisalTrackerDate:value(payload,'appraisalTrackerDate','appraisalDate','APPRAISAL Date'),titleStatus:value(payload,'titleStatus','TITLE Status'),titleTrackerDate:value(payload,'titleTrackerDate','titleDate','TITLE Date'),hoiStatus:value(payload,'hoiStatus','HOI Status'),hoiTrackerDate:value(payload,'hoiTrackerDate','hoiDate','HOI Date')};
+  const trackerContext={appraisalStatus:value(payload,'appraisalStatus','APPRAISAL_status','APPRAISAL Status'),appraisalTrackerDate:value(payload,'appraisalTrackerDate','appraisalDate','APPRAISAL_date','APPRAISAL Date'),titleStatus:value(payload,'titleStatus','TITLE_status','TITLE Status'),titleTrackerDate:value(payload,'titleTrackerDate','titleDate','TITLE_date','TITLE Date'),hoiStatus:value(payload,'hoiStatus','HOI_status','HOI Status'),hoiTrackerDate:value(payload,'hoiTrackerDate','hoiDate','HOI_date','HOI Date')};
   const loanAmount=Number(value(payload,'loanAmount','Loan Amount','loan_amount'));
   const borrowerFirstName=text(value(payload,'borrowerFirstName','primaryBorrowerFirstName','Borrower First Name')),
     borrowerLastName=text(value(payload,'borrowerLastName','primaryBorrowerLastName','Borrower Last Name'));
