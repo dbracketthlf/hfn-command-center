@@ -21,3 +21,13 @@ export function postgresTestClientOptions(databaseUrl) {
   url.searchParams.delete('sslmode');
   return {connectionString:url.toString(),ssl:{rejectUnauthorized:true}};
 }
+
+/**
+ * Explicit operator DATABASE_URL commands use a verified external connection.
+ * Unlike the web-service pool, they must never infer TLS behavior from NODE_ENV
+ * or an optional URL sslmode parameter.
+ */
+export function postgresOperatorPoolOptions(config) {
+  if(!config?.databaseUrl)throw new Error('DATABASE_URL is required');
+  return postgresTestClientOptions(config.databaseUrl);
+}
