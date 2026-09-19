@@ -2,6 +2,8 @@ import { createHash, randomUUID } from 'node:crypto';
 import { emptyIntegrationState, ingestEvent } from '../domain/events.js';
 
 const value = (payload, ...names) => names.map(name => payload[name]).find(item => item !== undefined && item !== null && item !== '');
+const object = value => value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+const nestedValue = (payload, parent, child) => value(object(object(payload)[parent]), child);
 const statusMap = Object.freeze({ LOAN_SETUP:'LOAN_SETUP', DISCLOSED:'DISCLOSED', ITP_SIGNED:'ITP_SIGNED', UNDERWRITING_SUBMITTED:'UNDERWRITING_SUBMITTED', APPROVED_WITH_CONDITION:'APPROVED_WITH_CONDITION', RE_SUBMITTAL:'RE_SUBMITTAL', CLEAR_TO_CLOSE:'CLEAR_TO_CLOSE', DOCS_OUT:'DOCS_OUT', DOCS_SIGNED:'DOCS_SIGNED', LOAN_FUNDED:'LOAN_FUNDED' });
 const digest = payload => createHash('sha256').update(JSON.stringify(payload) ?? 'null').digest('hex');
 const eventId = payload => value(payload, 'zapierEventId', 'zapier_event_id', 'eventId', 'event_id') ?? digest(payload);
@@ -15,6 +17,8 @@ const observableOperationalKeys=Object.freeze([
   'hoiStatus','hoiDate','hoiOrderedDate','hoiReceivedDate','HOI_status','HOI_date','initialCDSentDate','lenderInvestorName'
 ]);
 const hasOwn=(record,key)=>Object.hasOwn(record??{},key);
+const nestedTrackerPresence=(request,parent,child)=>hasOwn(object(request)[parent],child);
+const trackerFieldLocation=(request,topLevelNames,parent,child)=>topLevelNames.some(key=>hasOwn(request,key))?'top_level':nestedTrackerPresence(request,parent,child)?`nested_${parent}`:null;
 const safeTriggerSource=payload=>{
   const source=text(value(payload,'triggerSource','trigger_source'));
   return typeof source==='string'&&source.length<=120?source:null;
@@ -31,7 +35,15 @@ export function inboundRequestMetadata(payload) {
   return {
     incomingFieldPresence:Object.fromEntries(observableOperationalKeys.map(key=>[key,hasOwn(request,key)])),
     topLevelKeys,
-    payloadStructure:{hasData:hasOwn(request,'data'),hasFields:hasOwn(request,'fields'),hasLoan:hasOwn(request,'loan')},
+    payloadStructure:{hasData:hasOwn(request,'data'),hasFields:hasOwn(request,'fields'),hasLoan:hasOwn(request,'loan'),hasTitleTrackerObject:Object.keys(object(object(request).TITLE)).length>0,hasAppraisalTrackerObject:Object.keys(object(object(request).APPRAISAL)).length>0,hasHoiTrackerObject:Object.keys(object(object(request).HOI)).length>0},
+    recognizedTrackerFieldLocations:{
+      titleStatus:trackerFieldLocation(request,['titleStatus','TITLE_status','TITLE Status'],'TITLE','status'),
+      titleTrackerDate:trackerFieldLocation(request,['titleTrackerDate','titleDate','TITLE_date','TITLE Date'],'TITLE','date'),
+      appraisalStatus:trackerFieldLocation(request,['appraisalStatus','APPRAISAL_status','APPRAISAL Status'],'APPRAISAL','status'),
+      appraisalTrackerDate:trackerFieldLocation(request,['appraisalTrackerDate','appraisalDate','APPRAISAL_date','APPRAISAL Date'],'APPRAISAL','date'),
+      hoiStatus:trackerFieldLocation(request,['hoiStatus','HOI_status','HOI Status'],'HOI','status'),
+      hoiTrackerDate:trackerFieldLocation(request,['hoiTrackerDate','hoiDate','HOI_date','HOI Date'],'HOI','date')
+    },
     triggerSource:safeTriggerSource(request),
     suppliedEventId:explicitEventId??null
   };
@@ -55,7 +67,7 @@ export function normalizeArivePayload(payload, receivedAt) {
   const processor = text(value(payload, 'loanProcessorName', 'processorName', 'Processor')), processorEmail=text(value(payload,'loanProcessorEmail','processorEmail'));
   const suppliedTeam=value(payload, 'loanTeamUsers', 'loanTeam', 'Loan Team Users'); const teamUsers=Array.isArray(suppliedTeam)?suppliedTeam:teamUsersFromSlots(payload); const assignment=selectProcessorAssistant(teamUsers); const assistant=assignment.assistant?.name??null, assistantEmail=assignment.assistant?.email??null;
   const milestoneDates={initialLESentDate:value(payload,'keyDates_initialLESentDate'),initialLESignedDate:value(payload,'keyDates_initialLESignedDate'),intentToProceedDate:value(payload,'keyDates_intentToProceedDate'),initialCDSentDate:value(payload,'keyDates_initialCDSentDate','initialCDSentDate'),mostRecentCDSentDate:value(payload,'keyDates_mostRecentCDSentDate','mostRecentCDSentDate'),initialCDSignedDate:value(payload,'keyDates_initialCDSignedDate','initialCDSignedDate'),mostRecentCDSignedDate:value(payload,'keyDates_mostRecentCDSignedDate','mostRecentCDSignedDate'),appraisalOrderedDate:value(payload,'keyDates_appraisalOrderedDate','appraisalOrderedDate'),hoiOrderedDate:value(payload,'keyDates_hoiOrderedDate','hoiOrderedDate'),titleOrderedDate:value(payload,'keyDates_titleOrderedDate','titleOrderedDate'),appraisalReceivedDate:value(payload,'keyDates_appraisalDeliveryDate','appraisalReceivedDate'),hoiReceivedDate:value(payload,'keyDates_hoiReceivedDate','hoiReceivedDate'),titleReceivedDate:value(payload,'keyDates_titleReceivedDate','titleReceivedDate')};
-  const trackerContext={appraisalStatus:value(payload,'appraisalStatus','APPRAISAL_status','APPRAISAL Status'),appraisalTrackerDate:value(payload,'appraisalTrackerDate','appraisalDate','APPRAISAL_date','APPRAISAL Date'),titleStatus:value(payload,'titleStatus','TITLE_status','TITLE Status'),titleTrackerDate:value(payload,'titleTrackerDate','titleDate','TITLE_date','TITLE Date'),hoiStatus:value(payload,'hoiStatus','HOI_status','HOI Status'),hoiTrackerDate:value(payload,'hoiTrackerDate','hoiDate','HOI_date','HOI Date')};
+  const trackerContext={appraisalStatus:value(payload,'appraisalStatus','APPRAISAL_status','APPRAISAL Status')??nestedValue(payload,'APPRAISAL','status'),appraisalTrackerDate:value(payload,'appraisalTrackerDate','appraisalDate','APPRAISAL_date','APPRAISAL Date')??nestedValue(payload,'APPRAISAL','date'),titleStatus:value(payload,'titleStatus','TITLE_status','TITLE Status')??nestedValue(payload,'TITLE','status'),titleTrackerDate:value(payload,'titleTrackerDate','titleDate','TITLE_date','TITLE Date')??nestedValue(payload,'TITLE','date'),hoiStatus:value(payload,'hoiStatus','HOI_status','HOI Status')??nestedValue(payload,'HOI','status'),hoiTrackerDate:value(payload,'hoiTrackerDate','hoiDate','HOI_date','HOI Date')??nestedValue(payload,'HOI','date')};
   const loanAmount=Number(value(payload,'loanAmount','Loan Amount','loan_amount'));
   const borrowerFirstName=text(value(payload,'borrowerFirstName','primaryBorrowerFirstName','Borrower First Name')),
     borrowerLastName=text(value(payload,'borrowerLastName','primaryBorrowerLastName','Borrower Last Name'));
@@ -66,7 +78,7 @@ export const payloadIdempotencyKey = eventId;
 export const payloadFingerprint = digest;
 export const supportedEventType = status => statusMap[status];
 /** No passthrough: audit storage is an operational allowlist, never a modified raw payload. */
-export function redactedAuditPayload(payload, receivedAt) { const requestMetadata=inboundRequestMetadata(payload),loan=normalizeArivePayload(payload,receivedAt); return {ariveSystemGuid:loan.systemGuid,ariveDisplayLoanId:loan.displayLoanId,currentLoanStatus:loan.currentStatus,currentLoanStatusDate:loan.statusAt,loanUpdatedAt:loan.updatedAt,processor:loan.processor,processorEmail:loan.processorEmail,processorAssistant:loan.assistant,processorAssistantEmail:loan.assistantEmail,assignmentException:loan.assistantException,loanTeamRoles:loan.teamUsers.map(member=>({name:member.name,email:member.email,role:member.role})),propertyCity:loan.city,propertyState:loan.state,loanPurpose:loan.purpose,mortgageType:loan.mortgageType,loanAmount:loan.loanAmount,lenderInvestorName:loan.lenderInvestorName,milestoneDates:loan.milestoneDates,trackerContext:loan.trackerContext,incomingFieldPresence:requestMetadata.incomingFieldPresence,topLevelKeys:requestMetadata.topLevelKeys,payloadStructure:requestMetadata.payloadStructure,triggerSource:requestMetadata.triggerSource,suppliedEventId:requestMetadata.suppliedEventId}; }
+export function redactedAuditPayload(payload, receivedAt) { const requestMetadata=inboundRequestMetadata(payload),loan=normalizeArivePayload(payload,receivedAt); return {ariveSystemGuid:loan.systemGuid,ariveDisplayLoanId:loan.displayLoanId,currentLoanStatus:loan.currentStatus,currentLoanStatusDate:loan.statusAt,loanUpdatedAt:loan.updatedAt,processor:loan.processor,processorEmail:loan.processorEmail,processorAssistant:loan.assistant,processorAssistantEmail:loan.assistantEmail,assignmentException:loan.assistantException,loanTeamRoles:loan.teamUsers.map(member=>({name:member.name,email:member.email,role:member.role})),propertyCity:loan.city,propertyState:loan.state,loanPurpose:loan.purpose,mortgageType:loan.mortgageType,loanAmount:loan.loanAmount,lenderInvestorName:loan.lenderInvestorName,milestoneDates:loan.milestoneDates,trackerContext:loan.trackerContext,incomingFieldPresence:requestMetadata.incomingFieldPresence,topLevelKeys:requestMetadata.topLevelKeys,payloadStructure:requestMetadata.payloadStructure,recognizedTrackerFieldLocations:requestMetadata.recognizedTrackerFieldLocations,triggerSource:requestMetadata.triggerSource,suppliedEventId:requestMetadata.suppliedEventId}; }
 
 export function createAriveStore() {
   return { audits: [], loans: new Map(), assignments: new Map(), integration: emptyIntegrationState() };
