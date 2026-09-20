@@ -1,0 +1,6 @@
+.workflow-aging,.review-issue{display:inline-block;margin-top:8px;border-radius:999px;padding:3px 6px;font-size:9px;font-weight:800;letter-spacing:.55px}
+.aging-overdue{background:#fce7e6;color:#ac3632}
+.aging-follow_up_due{background:#fff1d8;color:#9b6009}
+.aging-waiting_external{background:#e8f0f3;color:#52717d}
+.aging-waiting_internal,.aging-escalated,.review-issue{background:#fce7e6;color:#8e302c}
+.task-actions .secondary-action{white-space:normal}
