@@ -12,6 +12,7 @@ class SettlementExecutor {
     if(['begin','commit','rollback'].includes(q))return {rows:[],rowCount:0};
     if(q.startsWith('select * from workflow_tasks where id=')){const task=this.task(args[0]);return {rows:task?[task]:[],rowCount:task?1:0};}
     if(q.startsWith('select id,loan_id,task_type,origin')){const task=this.task(args[0]);return {rows:task?[task]:[],rowCount:task?1:0};}
+    if(q.startsWith("select nullif(metadata->>'processoremail'"))return {rows:[{processorEmail:'processor@hfn.test',processor:'Processor'}],rowCount:1};
     if(q.startsWith('select task_type,state,last_follow_up_at')){const task=this.task(args[0]);return {rows:task?[task]:[],rowCount:task?1:0};}
     if(q.startsWith('select to_state from workflow_task_history'))return {rows:[],rowCount:0};
     if(q.startsWith("update workflow_tasks set state='completed'")){const task=this.task(args[0]);if(task&&!['completed','cancelled','not_applicable'].includes(task.state)){task.state='completed';task.completed_at=args[1];return {rows:[],rowCount:1};}return {rows:[],rowCount:0};}
@@ -20,6 +21,7 @@ class SettlementExecutor {
     if(q.startsWith('insert into workflow_tasks')){const type=q.includes("'order_settlement_statement'")?'order_settlement_statement':args[2];if(this.tasks.some(task=>task.loan_id===args[1]&&task.task_type===type))return {rows:[],rowCount:0};let task;
       if(type==='order_settlement_statement')task={id:args[0],loan_id:args[1],task_type:type,title:'Order Settlement Statement',origin:args[2],owner_role:'processor_assistant',owner_email:args[3],owner_name:args[4],state:'action_required',created_at:args[5],due_at:args[6],kpi_eligible:args[7]};
       else if(type==='settlement_statement_follow_up')task={id:args[0],loan_id:args[1],task_type:type,title:args[3],origin:args[4],owner_role:args[5],owner_email:args[6],owner_name:args[7],state:'waiting',created_at:args[8],kpi_eligible:args[9],waiting_on:args[10],follow_up_cadence_business_days:args[11],next_follow_up_at:args[12],follow_up_count:0,metadata:args[13]};
+      else if(type==='review_payoff')task={id:args[0],loan_id:args[1],task_type:type,title:args[3],origin:args[4],owner_role:'processor',owner_email:args[5],owner_name:args[6],state:'action_required',created_at:args[7],due_at:args[8],kpi_eligible:false,metadata:args[9]};
       else throw new Error(`Unexpected task type ${type}`);this.tasks.push(task);return {rows:[task],rowCount:1};}
     throw new Error(`Unexpected SQL: ${sql}`);
   }
@@ -29,7 +31,8 @@ const assistant={email:'assistant@hfn.test',role:'processor_assistant'},payoffAt
 test('Payoff Received creates one KPI-eligible Assistant settlement-statement order task',async()=>{
   const db=new SettlementExecutor(),repository=new PostgresAriveRepository(db);await repository.mutateWorkflowTask({employee:assistant,taskId:'payoff-follow',action:'payoff_received',at:payoffAt});
   const order=db.tasks.find(task=>task.task_type==='order_settlement_statement');
-  assert.equal(db.task('payoff-follow').state,'completed');assert.equal(order.owner_role,'processor_assistant');assert.equal(order.owner_email,assistant.email);assert.equal(order.kpi_eligible,true);assert.equal(order.due_at,businessDeadline(payoffAt,1,defaultCalendar));assert.ok(db.history.some(item=>item.action==='payoff_received'));assert.ok(db.history.some(item=>item.action==='settlement_statement_order_created'));
+  const review=db.tasks.find(task=>task.task_type==='review_payoff');
+  assert.equal(db.task('payoff-follow').state,'completed');assert.equal(order.owner_role,'processor_assistant');assert.equal(order.owner_email,assistant.email);assert.equal(order.kpi_eligible,true);assert.equal(order.due_at,businessDeadline(payoffAt,1,defaultCalendar));assert.equal(review.owner_role,'processor');assert.equal(review.owner_email,'processor@hfn.test');assert.equal(review.kpi_eligible,false);assert.equal(review.due_at,businessDeadline(payoffAt,1,defaultCalendar));assert.ok(db.history.some(item=>item.action==='payoff_received'));assert.ok(db.history.some(item=>item.action==='settlement_statement_order_created'));assert.ok(db.history.some(item=>item.action==='processor_review_handoff_created'));
   await repository.mutateWorkflowTask({employee:assistant,taskId:'payoff-follow',action:'payoff_received',at:payoffAt});assert.equal(db.tasks.filter(task=>task.task_type==='order_settlement_statement').length,1);
 });
 

@@ -11,6 +11,7 @@ import { goalWasCrossed, quickCtcElapsedCalendarDays, safeVictoryMetadata, victo
 import { planHydratedWorkflow } from '../domain/workflow-hydration.js';
 import { activeWorkflowStages } from '../domain/workflow-hydration.js';
 import { reconcileAriveMilestones, receivedWithoutOrderedSupersessionEvidence } from '../domain/workflow-reconciliation.js';
+import { manualPayoffReviewEvidence, vendorReviewHandoffEvidence } from '../domain/vendor-review-handoffs.js';
 import { staleVendorTaskCandidates } from '../domain/workflow-stale-vendor-audit.js';
 import { followUpCadence, followUpForInitialTask } from '../domain/third-party-follow-ups.js';
 import { mergeOperationalSnapshot } from '../domain/operational-snapshot.js';
@@ -45,6 +46,24 @@ export class PostgresAriveRepository {
   async recoverOperationalSnapshot({displayLoanId,dryRun=true}){if(!displayLoanId?.trim())throw new Error('A display loan ID is required');const client=await this.pool.connect();try{await client.query('begin');const loan=await client.query(`select id,arive_system_guid,arive_display_loan_id,operational_snapshot from loans where arive_display_loan_id=$1`,[displayLoanId.trim()]);if(loan.rowCount!==1)throw new Error(loan.rowCount?'Ambiguous loan identity':'Loan not found');const row=loan.rows[0],events=await client.query(`select received_at,payload->'milestoneDates' "milestoneDates",payload->'trackerContext' "trackerContext" from inbound_events where source='zapier-arive' and payload->>'ariveSystemGuid'=$1 order by received_at asc,id asc`,[row.arive_system_guid]),recovered=recoverOperationalSnapshot(events.rows),changes=snapshotChanges(row.operational_snapshot??{},recovered),candidates=await this.reconcileWorkflowMilestones(client,{loanId:row.id,milestoneDates:recovered.milestoneDates,trackerContext:recovered.trackerContext,dryRun:true}),summarize=item=>({taskType:item.taskType,completedAt:item.completedAt??null,authoritativeAt:item.authoritativeAt??null,evidence:item.evidence,action:item.action??'arive_milestone_reconciled',orderedTimestamp:item.orderedTimestamp??null}),result={dryRun,displayLoanId:row.arive_display_loan_id,eventsInspected:events.rowCount,earliestEventAt:events.rows[0]?.received_at??null,latestEventAt:events.rows.at(-1)?.received_at??null,currentOperationalSnapshotPresent:Boolean(row.operational_snapshot&&Object.keys(row.operational_snapshot).length),recoveredOperationalSnapshot:recovered,fieldsWouldChange:changes,reconciliationCandidates:candidates.map(summarize)};if(dryRun){await client.query('rollback');return result;}await client.query('update loans set operational_snapshot=$2,updated_at=now() where id=$1',[row.id,recovered]);const reconciled=await this.reconcileWorkflowMilestones(client,{loanId:row.id,milestoneDates:recovered.milestoneDates,trackerContext:recovered.trackerContext});const hash=operationalSnapshotHash(recovered);await client.query(`insert into operational_snapshot_recoveries(id,loan_id,recovered_at,source_event_count,snapshot_hash,metadata) values($1,$2,now(),$3,$4,$5) on conflict(loan_id,snapshot_hash) do nothing`,[randomUUID(),row.id,events.rowCount,hash,{fieldsChanged:changes,reconciledTaskTypes:reconciled.map(task=>task.taskType)}]);await client.query('commit');return {...result,reconciledTasks:reconciled.map(summarize)};}catch(error){await client.query('rollback');throw error;}finally{client.release();}}
   async repairAssistantDeadlines(){const tasks=await this.pool.query(`select t.id,t.task_type,e.occurred_at from assistant_tasks t join loan_stage_events e on e.id=t.created_from_event_id where e.event_type='UNDERWRITING_SUBMITTED'`);for(const task of tasks.rows){const milestone=assistantMilestones.find(item=>item.type===task.task_type);if(!milestone)continue;const dueAt=this.assistantDeadline(task.occurred_at,milestone);await this.pool.query('update assistant_tasks set due_at=$2 where id=$1 and due_at is distinct from $2',[task.id,dueAt]);}}
   async syncClosingDisclosureTask(executor,loanId,createdFromEventId,milestoneDates){const applicableAt=milestoneDates.appraisalReceivedDate,completedAt=milestoneDates.initialCDSentDate??null;if(!applicableAt){if(completedAt)await executor.query(`update assistant_tasks set completed_at=coalesce(completed_at,$2),status=case when coalesce(completed_at,$2)<=due_at then 'completed_within_sla' else 'completed_late' end where loan_id=$1 and task_type='closing_disclosure_sent'`,[loanId,completedAt]);return 0;}const dueAtValue=dueAt(applicableAt,{kind:'businessHours',value:17},this.calendar).toISOString(),status=completedAt?(new Date(completedAt)<=new Date(dueAtValue)?'completed_within_sla':'completed_late'):'open';const result=await executor.query(`insert into assistant_tasks (id,loan_id,task_type,applicable_at,due_at,completed_at,status,created_from_event_id) values ($1,$2,'closing_disclosure_sent',$3,$4,$5,$6,$7) on conflict (loan_id,task_type) do update set completed_at=coalesce(assistant_tasks.completed_at,excluded.completed_at),status=case when coalesce(assistant_tasks.completed_at,excluded.completed_at) is null then assistant_tasks.status when coalesce(assistant_tasks.completed_at,excluded.completed_at)<=assistant_tasks.due_at then 'completed_within_sla' else 'completed_late' end returning (xmax=0) inserted`,[randomUUID(),loanId,applicableAt,dueAtValue,completedAt,status,createdFromEventId]);return result.rows?.[0]?.inserted?1:0;}
+  async createProcessorReviewHandoff(executor,{loanId,handoff,processor=null,processorEmail=null,origin='automatic'}){
+    if(!handoff?.authoritativeAt)return null;
+    // Never assign an operational review to an arbitrary employee or Admin.
+    if(!processorEmail)return null;
+    const created=await executor.query(`insert into workflow_tasks(id,loan_id,task_type,title,origin,owner_role,owner_email,owner_name,source_trigger,state,created_at,due_at,kpi_eligible,metadata)
+      values($1,$2,$3,$4,$5,'processor',$6,$7,'VENDOR_RECEIVED','action_required',$8,$9,false,$10)
+      on conflict do nothing returning id`,[randomUUID(),loanId,handoff.taskType,handoff.title,origin,processorEmail,processor??null,handoff.authoritativeAt,businessDeadline(handoff.authoritativeAt,1,this.calendar),safeWorkflowMetadata({sourceEvent:handoff.milestone})]);
+    if(created.rowCount)await this.addWorkflowHistory(executor,created.rows[0].id,{at:handoff.authoritativeAt,action:'processor_review_handoff_created',toState:'action_required',metadata:{sourceEvent:handoff.milestone}});
+    return created.rows[0]??null;
+  }
+  async createVendorReceiptReviewHandoffs(executor,{loanId,milestoneDates={},trackerContext={},processor=null,processorEmail=null}){
+    const created=[];
+    for(const handoff of vendorReviewHandoffEvidence(milestoneDates,trackerContext)){
+      const task=await this.createProcessorReviewHandoff(executor,{loanId,handoff,processor,processorEmail});
+      if(task)created.push(task);
+    }
+    return created;
+  }
   async repairClosingDisclosureTasks(){const snapshots=await this.pool.query(`select l.id loan_id,nullif(l.operational_snapshot->'milestoneDates'->>'appraisalReceivedDate','') appraisal_received_date,nullif(l.operational_snapshot->'milestoneDates'->>'initialCDSentDate','') initial_cd_sent_date from loans l`);for(const snapshot of snapshots.rows)await this.syncClosingDisclosureTask(this.pool,snapshot.loan_id,null,{appraisalReceivedDate:snapshot.appraisal_received_date,initialCDSentDate:snapshot.initial_cd_sent_date});}
   async createThirdPartyFollowUp(executor,taskId,{at}){
     const result=await executor.query(`select id,loan_id,task_type,origin,owner_role,owner_email,owner_name,kpi_eligible,metadata from workflow_tasks where id=$1`,[taskId]);
@@ -74,7 +93,7 @@ export class PostgresAriveRepository {
     }
     return superseded;
   }
-  async reconcileWorkflowMilestones(executor,{loanId,milestoneDates={},trackerContext={},dryRun=false}){
+  async reconcileWorkflowMilestones(executor,{loanId,milestoneDates={},trackerContext={},processor=null,processorEmail=null,dryRun=false}){
     const reconciled=[];
     for(let pass=0;pass<2;pass++){
       const matched=await reconcileAriveMilestones(executor,{loanId,milestoneDates,trackerContext,dryRun});
@@ -83,7 +102,9 @@ export class PostgresAriveRepository {
       if(dryRun)break;
       if(!dryRun)for(const task of matched)await this.createThirdPartyFollowUp(executor,task.taskId,{at:task.completedAt});
     }
-    return [...reconciled,...await this.supersedeInitialVendorTasksFromFinalEvidence(executor,{loanId,milestoneDates,trackerContext,dryRun})];
+    const superseded=await this.supersedeInitialVendorTasksFromFinalEvidence(executor,{loanId,milestoneDates,trackerContext,dryRun});
+    if(!dryRun)await this.createVendorReceiptReviewHandoffs(executor,{loanId,milestoneDates,trackerContext,processor,processorEmail});
+    return [...reconciled,...superseded];
   }
   async createSettlementStatementOrder(executor,payoffTask,{at,actorEmail=null}){
     const created=await executor.query(`insert into workflow_tasks(id,loan_id,task_type,title,origin,owner_role,owner_email,owner_name,source_trigger,state,created_at,due_at,kpi_eligible,metadata) values($1,$2,'order_settlement_statement','Order Settlement Statement',$3,'processor_assistant',$4,$5,'PAYOFF_RECEIVED','action_required',$6,$7,$8,$9) on conflict do nothing returning id`,[randomUUID(),payoffTask.loan_id,payoffTask.origin,payoffTask.owner_email,payoffTask.owner_name,at,businessDeadline(at,1,this.calendar),payoffTask.kpi_eligible,safeWorkflowMetadata({sourceEvent:'PAYOFF_RECEIVED'})]);
@@ -116,9 +137,20 @@ export class PostgresAriveRepository {
       }
     }
     if(action==='completed'||action==='payoff_ordered'||action==='settlement_statement_ordered')await this.createThirdPartyFollowUp(executor,taskId,{at});
+    if(action==='completed'){
+      const task=(await executor.query('select id,loan_id,task_type,origin,owner_role,owner_email,owner_name,kpi_eligible,workflow_cycle from workflow_tasks where id=$1',[taskId])).rows[0];
+      if(task?.task_type==='resubmit_to_underwriting')await this.createUpdatedApprovalFollowUp(executor,task,{at,actorEmail});
+    }
+    if(action==='payoff_received'){
+      const task=(await executor.query('select id,loan_id,task_type,origin,owner_role,owner_email,owner_name,kpi_eligible,workflow_cycle from workflow_tasks where id=$1',[taskId])).rows[0],handoff=manualPayoffReviewEvidence(at);
+      if(task?.task_type==='payoff_follow_up'&&handoff){
+        const assignment=await executor.query(`select nullif(metadata->>'processorEmail','') "processorEmail",nullif(metadata->>'processor','') processor from loan_stage_events where loan_id=$1 order by occurred_at desc,received_at desc limit 1`,[task.loan_id]);
+        await this.createProcessorReviewHandoff(executor,{loanId:task.loan_id,handoff,processor:assignment.rows[0]?.processor??null,processorEmail:assignment.rows[0]?.processorEmail??null,origin:'manual'});
+      }
+    }
   }
   async startConditionsCycle(executor,{loanId,occurredAt,processor,processorEmail,kpiEligible}){
-    const active=await executor.query(`select id,task_type,state from workflow_tasks where loan_id=$1 and task_type in ('review_approval_conditions','borrower_conditions_follow_up','resubmit_to_underwriting','ctc_follow_up') and state not in ('completed','cancelled','not_applicable') order by workflow_cycle desc`,[loanId]);
+    const active=await executor.query(`select id,task_type,state from workflow_tasks where loan_id=$1 and task_type in ('review_approval_conditions','borrower_conditions_follow_up','resubmit_to_underwriting','updated_approval_follow_up','ctc_follow_up') and state not in ('completed','cancelled','not_applicable') order by workflow_cycle desc`,[loanId]);
     if(active.rows.some(task=>task.task_type!=='ctc_follow_up'))return null;
     for(const task of active.rows){await executor.query("update workflow_tasks set state='cancelled',updated_at=now() where id=$1",[task.id]);await this.addWorkflowHistory(executor,task.id,{at:occurredAt,action:'cancelled_by_new_conditions',fromState:task.state,toState:'cancelled',metadata:{sourceEvent:'APPROVED_WITH_CONDITION'}});}
     const cycle=Number((await executor.query("select coalesce(max(workflow_cycle),0)+1 cycle from workflow_tasks where loan_id=$1 and task_type='review_approval_conditions'",[loanId])).rows[0]?.cycle??1);
@@ -137,6 +169,17 @@ export class PostgresAriveRepository {
     if(created.rowCount)await this.addWorkflowHistory(executor,created.rows[0].id,{at,action:'resubmit_to_underwriting_created',toState:'action_required',actorEmail,metadata:{workflowCycle:cycle}});
     return created.rows[0]??null;
   }
+  async createUpdatedApprovalFollowUp(executor,resubmitTask,{at,actorEmail=null}){
+    const cycle=resubmitTask.workflow_cycle??1,cadence=2,nextAt=nextFollowUpAt(at,cadence,this.calendar);
+    const created=await executor.query(`insert into workflow_tasks(id,loan_id,task_type,workflow_cycle,title,origin,owner_role,owner_email,owner_name,source_trigger,state,created_at,due_at,kpi_eligible,waiting_on,follow_up_cadence_business_days,next_follow_up_at,metadata) values($1,$2,'updated_approval_follow_up',$3,'Follow Up on Updated Approval',$4,'processor',$5,$6,'RE_SUBMITTAL','waiting',$7,$8,$9,'underwriter',2,$10,$11) on conflict do nothing returning id`,[randomUUID(),resubmitTask.loan_id,cycle,resubmitTask.origin,resubmitTask.owner_email,resubmitTask.owner_name,at,nextAt,resubmitTask.kpi_eligible,nextAt,safeWorkflowMetadata({workflowCycle:cycle})]);
+    if(created.rowCount)await this.addWorkflowHistory(executor,created.rows[0].id,{at,action:'updated_approval_follow_up_created',toState:'waiting',actorEmail,metadata:{sourceEvent:'RE_SUBMITTAL',waitingOn:'underwriter',nextFollowUpAt:nextAt,workflowCycle:cycle}});
+    return created.rows[0]??null;
+  }
+  async completeUpdatedApprovalFollowUp(executor,{loanId,occurredAt}){
+    const completed=await executor.query(`update workflow_tasks set state='completed',completed_at=$2,updated_at=now() where loan_id=$1 and task_type='updated_approval_follow_up' and state not in ('completed','cancelled','not_applicable') returning id,state`,[loanId,occurredAt]);
+    for(const task of completed.rows)await this.addWorkflowHistory(executor,task.id,{at:occurredAt,action:'completed_by_arive_event',fromState:task.state,toState:'completed',metadata:{sourceEvent:'APPROVED_WITH_CONDITION'}});
+    return completed.rows;
+  }
   async createCtcFollowUp(executor,{loanId,occurredAt}){
     const resubmit=(await executor.query(`select loan_id,workflow_cycle,origin,owner_email,owner_name,kpi_eligible from workflow_tasks where loan_id=$1 and task_type='resubmit_to_underwriting' order by workflow_cycle desc limit 1`,[loanId])).rows[0];
     if(!resubmit)return null;
@@ -145,13 +188,16 @@ export class PostgresAriveRepository {
     return created.rows[0]??null;
   }
   async closeConditionsForClearToClose(executor,{loanId,occurredAt}){
-    const result=await executor.query(`update workflow_tasks set state=case when task_type='ctc_follow_up' then 'completed' else 'cancelled' end,completed_at=case when task_type='ctc_follow_up' then $2 else completed_at end,updated_at=now() where loan_id=$1 and task_type in ('review_approval_conditions','borrower_conditions_follow_up','resubmit_to_underwriting','ctc_follow_up') and state not in ('completed','cancelled','not_applicable') returning id,task_type,state`,[loanId,occurredAt]);
+    const result=await executor.query(`update workflow_tasks set state=case when task_type='ctc_follow_up' then 'completed' else 'cancelled' end,completed_at=case when task_type='ctc_follow_up' then $2 else completed_at end,updated_at=now() where loan_id=$1 and task_type in ('review_approval_conditions','borrower_conditions_follow_up','resubmit_to_underwriting','updated_approval_follow_up','ctc_follow_up') and state not in ('completed','cancelled','not_applicable') returning id,task_type,state`,[loanId,occurredAt]);
     for(const task of result.rows)await this.addWorkflowHistory(executor,task.id,{at:occurredAt,action:task.task_type==='ctc_follow_up'?'completed_by_arive_event':'cancelled_by_clear_to_close',fromState:task.state,toState:task.task_type==='ctc_follow_up'?'completed':'cancelled',metadata:{sourceEvent:'CLEAR_TO_CLOSE'}});
   }
   async syncWorkflowForEvent(executor,{loanId,eventType,occurredAt,processor,processorEmail,assistant,assistantEmail}){
     const tracking=await executor.query('select kpi_tracking_started_at is not null kpi_eligible from loans where id=$1',[loanId]);
     const kpiEligible=Boolean(tracking.rows[0]?.kpi_eligible);
-    if(eventType==='APPROVED_WITH_CONDITION')await this.startConditionsCycle(executor,{loanId,occurredAt,processor,processorEmail,kpiEligible});
+    if(eventType==='APPROVED_WITH_CONDITION'){
+      await this.completeUpdatedApprovalFollowUp(executor,{loanId,occurredAt});
+      await this.startConditionsCycle(executor,{loanId,occurredAt,processor,processorEmail,kpiEligible});
+    }
     for(const definition of definitionsCompletedBy(eventType)){
       const completed=await executor.query(`update workflow_tasks set state='completed',completed_at=$3,updated_at=now() where loan_id=$1 and task_type=$2 and state not in ('completed','cancelled','not_applicable') returning id,state`,[loanId,definition.type,occurredAt]);
       for(const task of completed.rows){
@@ -168,7 +214,10 @@ export class PostgresAriveRepository {
         for(const [sortOrder,label] of (definition.checklist??[]).entries())await executor.query('insert into workflow_task_checklist_items(id,task_id,label,sort_order) values($1,$2,$3,$4)',[randomUUID(),task.id,label,sortOrder]);
       }
     }
-    if(eventType==='RE_SUBMITTAL')await this.createCtcFollowUp(executor,{loanId,occurredAt});
+    if(eventType==='RE_SUBMITTAL'){
+      const resubmit=(await executor.query(`select loan_id,workflow_cycle,origin,owner_email,owner_name,kpi_eligible from workflow_tasks where loan_id=$1 and task_type='resubmit_to_underwriting' order by workflow_cycle desc limit 1`,[loanId])).rows[0];
+      if(resubmit)await this.createUpdatedApprovalFollowUp(executor,resubmit,{at:occurredAt});
+    }
     if(eventType==='CLEAR_TO_CLOSE')await this.closeConditionsForClearToClose(executor,{loanId,occurredAt});
     if(eventType==='LOAN_FUNDED'){
       const cancelled=await executor.query(`update workflow_tasks set state='cancelled',updated_at=now() where loan_id=$1 and state not in ('completed','cancelled','not_applicable') returning id,state`,[loanId]);
@@ -244,14 +293,14 @@ export class PostgresAriveRepository {
       if(!loan.systemGuid)return await this.fail(client,id,receivedAt,'Missing ARIVE System GUID');
       await client.query(`insert into loans (id,arive_system_guid,arive_display_loan_id,loan_number,purpose,mortgage_type,city,state,current_stage,created_at,updated_at,borrower_first_name,borrower_last_name) values ($1,$2,$3,$3,$4,$5,$6,$7,$8,$9,$9,$10,$11) on conflict (arive_system_guid) do update set arive_display_loan_id=excluded.arive_display_loan_id,purpose=excluded.purpose,mortgage_type=excluded.mortgage_type,city=excluded.city,state=excluded.state,current_stage=excluded.current_stage,borrower_first_name=coalesce(excluded.borrower_first_name,loans.borrower_first_name),borrower_last_name=coalesce(excluded.borrower_last_name,loans.borrower_last_name),updated_at=excluded.updated_at`,[randomUUID(),loan.systemGuid,loan.displayLoanId,loan.purpose,loan.mortgageType,loan.city,loan.state,loan.currentStatus??'UNKNOWN',receivedAt,loan.borrowerFirstName??null,loan.borrowerLastName??null]);
       const row=await client.query('select id from loans where arive_system_guid=$1',[loan.systemGuid]),loanId=row.rows[0].id,eventType=supportedEventType(loan.currentStatus),operationalSnapshot=await this.mergeOperationalSnapshot(client,loanId,{milestoneDates:loan.milestoneDates,trackerContext:loan.trackerContext,lenderInvestorName:loan.lenderInvestorName});loan.milestoneDates=operationalSnapshot.milestoneDates;loan.trackerContext=operationalSnapshot.trackerContext;loan.lenderInvestorName=operationalSnapshot.lenderInvestorName??null;
-      if(!eventType||!loan.statusAt){const tasksCreated=await this.syncClosingDisclosureTask(client,loanId,null,loan.milestoneDates),reconciled=await this.reconcileWorkflowMilestones(client,{loanId,milestoneDates:loan.milestoneDates,trackerContext:loan.trackerContext});await client.query("update inbound_events set processing_status='processed',failure_reason=$2,processed_at=$3 where id=$1",[id,eventType?'Missing Current Loan Status Date; no milestone created':'No supported status event',receivedAt]);await client.query('COMMIT');return {ok:true,outcome:'accepted-no-event',tasksCreated};}
+      if(!eventType||!loan.statusAt){const tasksCreated=await this.syncClosingDisclosureTask(client,loanId,null,loan.milestoneDates),reconciled=await this.reconcileWorkflowMilestones(client,{loanId,milestoneDates:loan.milestoneDates,trackerContext:loan.trackerContext,processor:loan.processor,processorEmail:loan.processorEmail});await client.query("update inbound_events set processing_status='processed',failure_reason=$2,processed_at=$3 where id=$1",[id,eventType?'Missing Current Loan Status Date; no milestone created':'No supported status event',receivedAt]);await client.query('COMMIT');return {ok:true,outcome:'accepted-no-event',tasksCreated};}
       const eventId=randomUUID(),fundingPeriod=eventType==='LOAN_FUNDED'?pacificYearMonth(new Date(loan.statusAt)):null,fundingBefore=fundingPeriod?{...fundingPeriod,...await this.fundingSummaryFor(client,fundingPeriod.year,fundingPeriod.month)}:null;
       const stage=await client.query('insert into loan_stage_events (id,loan_id,event_type,occurred_at,received_at,source,source_event_id,metadata) values ($1,$2,$3,$4,$5,$6,$7,$8) on conflict do nothing returning id',[eventId,loanId,eventType,loan.statusAt,receivedAt,'zapier-arive',key,{ariveDisplayLoanId:loan.displayLoanId,processor:loan.processor,processorEmail:loan.processorEmail,assistant:loan.assistant,assistantEmail:loan.assistantEmail,assignmentException:loan.assistantException,loanTeamRoles:loan.teamUsers}]);
       await this.syncWorkflowForEvent(client,{loanId,eventType,occurredAt:loan.statusAt,eventId,processor:loan.processor,processorEmail:loan.processorEmail,assistant:loan.assistant,assistantEmail:loan.assistantEmail});
       let tasksCreated=0;
       if(eventType==='UNDERWRITING_SUBMITTED')for(const milestone of assistantMilestones){const completedAt=loan.milestoneDates[milestone.completionKey]??null,deadline=dueAt(loan.statusAt,{kind:'businessHours',value:milestone.businessDays*8.5},this.calendar).toISOString(),created=await client.query(`insert into assistant_tasks (id,loan_id,task_type,applicable_at,due_at,completed_at,status,created_from_event_id) values ($1,$2,$3,$4,$5,$6,$7,$8) on conflict (loan_id,task_type) do nothing returning id`,[randomUUID(),loanId,milestone.type,loan.statusAt,deadline,completedAt,completedAt?'completed':'open',eventId]);tasksCreated+=created.rowCount;}
       tasksCreated+=await this.syncClosingDisclosureTask(client,loanId,eventId,loan.milestoneDates);
-      await this.reconcileWorkflowMilestones(client,{loanId,milestoneDates:loan.milestoneDates,trackerContext:loan.trackerContext});
+      await this.reconcileWorkflowMilestones(client,{loanId,milestoneDates:loan.milestoneDates,trackerContext:loan.trackerContext,processor:loan.processor,processorEmail:loan.processorEmail});
       if(stage.rowCount)await this.syncVictoryEvents(client,{loanId,eventType,occurredAt:loan.statusAt,displayLoanId:loan.displayLoanId,fundingBefore});
       await client.query("update inbound_events set processing_status='processed',processed_at=$2 where id=$1",[id,receivedAt]);await client.query('COMMIT');return {ok:true,outcome:'processed',tasksCreated};
     } catch(error){await client.query('ROLLBACK');throw error;} finally {client.release();}

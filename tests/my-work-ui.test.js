@@ -31,6 +31,7 @@ test('My Work modal uses associated labels and preserves grouped task rendering'
 });
 
 test('conditions workflow uses explicit processor actions without changing My Work grouping',async()=>{const script=await readFile(new URL('../public/my-work.js',import.meta.url),'utf8');assert.match(script,/Review Complete/);assert.match(script,/Record Follow-Up/);assert.match(script,/Ready for Re-Submittal/);assert.match(script,/review_complete/);assert.match(script,/ready_for_resubmittal/);});
+test('underwriting resubmission uses a dedicated submit label and an ARIVE-driven updated approval follow-up',async()=>{const script=await readFile(new URL('../public/my-work.js',import.meta.url),'utf8');assert.match(script,/Submit Conditions to UW/);assert.match(script,/updated_approval_follow_up/);assert.match(script,/updated underwriting approval/);});
 
 test('checklist controls are explicit buttons, toggle state, and prevent a premature generic completion',async()=>{const script=await readFile(new URL('../public/my-work.js',import.meta.url),'utf8');assert.match(script,/type="button" class="checklist-toggle"/);assert.match(script,/completed\?'action_required':'completed'/);assert.match(script,/notApplicable\?'action_required':'not_applicable'/);assert.match(script,/wireChecklistControls\(drawer\)/);assert.match(script,/Complete the checklist to finish this task/);assert.match(script,/Ready for Re-Submittal \(Completes Task\)/);assert.match(script,/Record Follow-Up keeps this task waiting/);});
 
