@@ -46,7 +46,7 @@ export function createHfnServer({ store=createAriveStore(), environment=process.
         const payload=await readJson(req), result=store.receive?await store.receive(payload):acceptArivePayload(store,payload);
         return json(res,result.ok?200:400,{ok:result.ok,outcome:result.outcome,tasksCreated:result.tasksCreated,error:result.ok?undefined:result.error});
       }
-      if (req.method==='GET' && url.pathname==='/api/integrations/arive/health') return json(res,200,store.health?await store.health():integrationHealth(store));
+      if (req.method==='GET' && url.pathname==='/api/integrations/arive/health') {if(!employee)return json(res,401,{ok:false,error:'Sign in required'});if(!hasCapability(employee,'admin'))return json(res,403,{ok:false,error:'Integration Health is available to Admin only'});return json(res,200,store.health?await store.health():integrationHealth(store));}
       if (req.method==='GET' && url.pathname==='/api/dashboard') return store.dashboard?json(res,200,await store.dashboard()):json(res,404,{ok:false,error:'Live dashboard unavailable in demo mode'});
       if (req.method==='GET' && url.pathname==='/api/victory-events') return store.victoryEvents?json(res,200,await store.victoryEvents(url.searchParams.get('after'))):json(res,200,{events:[]});
       if (environment!=='production' && req.method==='GET' && url.pathname==='/api/development/victory-events/preview') return json(res,200,{event:previewVictoryEvent(url.searchParams.get('type')??undefined)});

@@ -1,4 +1,6 @@
 import { randomUUID } from 'node:crypto';
+import { resolveOperationalOwnerForLoan } from './postgres-arive.js';
+import { hasCapability } from '../domain/staffing.js';
 
 const activeStates="('completed','cancelled','not_applicable')";
 const email=value=>String(value??'').trim().toLowerCase();
@@ -23,24 +25,41 @@ export async function enrichPrivateAdminCommandCenter(pool,center){
 }
 
 export async function manualTaskOptions(pool,employee){
-  const ownerField=employee.role==='processor'?'processorEmail':'assistantEmail';
-  const where=employee.role==='admin'?'':`and lower(coalesce(e.metadata->>'${ownerField}',''))=lower($1)`;
-  const params=employee.role==='admin'?[]:[employee.email];
-  const result=await pool.query(`select l.id,l.arive_display_loan_id "displayLoanId",l.current_stage "currentStage",l.borrower_first_name,l.borrower_last_name,coalesce(e.metadata->>'processorEmail','') "processorEmail",coalesce(e.metadata->>'processor','') processor,coalesce(e.metadata->>'assistantEmail','') "assistantEmail",coalesce(e.metadata->>'assistant','') assistant from loans l left join lateral (select metadata from loan_stage_events where loan_id=l.id order by occurred_at desc,received_at desc limit 1) e on true where l.processing_eligible_at is not null ${where} order by l.updated_at desc`,params);
-  return {loans:result.rows.map(row=>({loanId:row.id,displayLoanId:row.displayLoanId,currentStage:row.currentStage,borrowerName:[row.borrower_first_name,row.borrower_last_name].filter(Boolean).join(' ')||null,assignees:[{email:row.processorEmail,name:row.processor,role:'processor'},{email:row.assistantEmail,name:row.assistant,role:'processor_assistant'}].filter(person=>person.email)}))};
+  const result=await pool.query(`select l.id,l.arive_display_loan_id "displayLoanId",l.current_stage "currentStage",l.borrower_first_name,l.borrower_last_name,coalesce(e.metadata->>'processorEmail','') "processorEmail",coalesce(e.metadata->>'processor','') processor,coalesce(e.metadata->>'assistantEmail','') "assistantEmail",coalesce(e.metadata->>'assistant','') assistant from loans l left join loan_stage_events e on e.id=l.current_stage_event_id where l.processing_eligible_at is not null order by l.updated_at desc`);
+  const self=email(employee.email),admin=hasCapability(employee,'admin'),processor=hasCapability(employee,'processor'),assistant=hasCapability(employee,'processor_assistant');
+  const options=await Promise.all(result.rows.map(async row=>{
+    const [processorResolution,assistantResolution]=await Promise.all([
+      resolveOperationalOwnerForLoan(pool,{loanId:row.id,role:'processor',ariveName:row.processor,ariveEmail:row.processorEmail}),
+      resolveOperationalOwnerForLoan(pool,{loanId:row.id,role:'processor_assistant',ariveName:row.assistant,ariveEmail:row.assistantEmail})
+    ]);
+    const assignees=[
+      processorResolution.owner&&{email:processorResolution.owner.email,name:processorResolution.owner.displayName,role:'processor'},
+      assistantResolution.owner&&{email:assistantResolution.owner.email,name:assistantResolution.owner.displayName,role:'processor_assistant'}
+    ].filter(Boolean);
+    const ownsProcessor=email(processorResolution.owner?.email)===self,ownsAssistant=email(assistantResolution.owner?.email)===self;
+    if(!admin&&!(processor&&ownsProcessor)&&!(assistant&&ownsAssistant))return null;
+    return {loanId:row.id,displayLoanId:row.displayLoanId,currentStage:row.currentStage,borrowerName:[row.borrower_first_name,row.borrower_last_name].filter(Boolean).join(' ')||null,assignees};
+  }));
+  return {loans:options.filter(Boolean)};
 }
 
 export async function createPrivateManualTask(pool,{employee,loanId,title,assigneeEmail,dueAt,priority='normal',note=null}){
-  if(!['processor','processor_assistant','admin'].includes(employee.role))throw new Error('Not authorized for manual tasks');
+  if(!['processor','processor_assistant','admin'].some(capability=>hasCapability(employee,capability)))throw new Error('Not authorized for manual tasks');
   const safeTitle=String(title??'').trim(); if(!safeTitle||safeTitle.length>160)throw new Error('Task title is required');
   const due=validDue(dueAt); if(!due)throw new Error('Valid due date is required');
   if(!['normal','high','urgent'].includes(priority))throw new Error('Invalid priority');
   const client=await pool.connect(); try {await client.query('begin');
-    const loan=await client.query(`select l.id,coalesce(e.metadata->>'processorEmail','') processor_email,coalesce(e.metadata->>'processor','') processor_name,coalesce(e.metadata->>'assistantEmail','') assistant_email,coalesce(e.metadata->>'assistant','') assistant_name from loans l left join lateral (select metadata from loan_stage_events where loan_id=l.id order by occurred_at desc,received_at desc limit 1) e on true where l.id=$1 and l.processing_eligible_at is not null`,[loanId]);
-    if(!loan.rowCount)throw new Error('Loan is not available'); const row=loan.rows[0], requested=email(assigneeEmail), processor=email(row.processor_email), assistant=email(row.assistant_email), self=email(employee.email);
-    const permitted=employee.role==='processor_assistant'?requested===self&&requested===assistant:employee.role==='processor'?(self===processor&&(requested===processor||requested===assistant)):requested===processor||requested===assistant;
+    const loan=await client.query(`select l.id,coalesce(e.metadata->>'processorEmail','') processor_email,coalesce(e.metadata->>'processor','') processor_name,coalesce(e.metadata->>'assistantEmail','') assistant_email,coalesce(e.metadata->>'assistant','') assistant_name from loans l left join loan_stage_events e on e.id=l.current_stage_event_id where l.id=$1 and l.processing_eligible_at is not null`,[loanId]);
+    if(!loan.rowCount)throw new Error('Loan is not available'); const row=loan.rows[0],requested=email(assigneeEmail),self=email(employee.email),[processorResolution,assistantResolution]=await Promise.all([
+      resolveOperationalOwnerForLoan(client,{loanId,role:'processor',ariveName:row.processor_name,ariveEmail:row.processor_email}),
+      resolveOperationalOwnerForLoan(client,{loanId,role:'processor_assistant',ariveName:row.assistant_name,ariveEmail:row.assistant_email})
+    ]),owners=[
+      processorResolution.owner&&{...processorResolution.owner,role:'processor'},
+      assistantResolution.owner&&{...assistantResolution.owner,role:'processor_assistant'}
+    ].filter(Boolean),selected=owners.find(owner=>email(owner.email)===requested),ownsProcessor=email(processorResolution.owner?.email)===self,ownsAssistant=email(assistantResolution.owner?.email)===self;
+    const permitted=Boolean(selected)&&(hasCapability(employee,'admin')||(hasCapability(employee,'processor_assistant')&&ownsAssistant&&requested===self)||(hasCapability(employee,'processor')&&ownsProcessor));
     if(!permitted)throw new Error('Assignee is not permitted for this loan');
-    const ownerRole=requested===processor?'processor':'processor_assistant', ownerName=ownerRole==='processor'?row.processor_name:row.assistant_name, id=randomUUID(), at=new Date().toISOString();
+    const ownerRole=selected.role,ownerName=selected.displayName,id=randomUUID(),at=new Date().toISOString();
     await client.query(`insert into workflow_tasks(id,loan_id,task_type,title,origin,owner_role,owner_email,owner_name,state,created_at,due_at,kpi_eligible,priority,created_by_email,created_by_role,manual_note,metadata) values($1,$2,$3,$4,'manual',$5,$6,$7,'action_required',$8,$9,false,$10,$11,$12,$13,'{}')`,[id,loanId,`manual_operational_task_${id}`,safeTitle,ownerRole,requested,ownerName,at,due,priority,self,employee.role,note?String(note).slice(0,1000):null]);
     await client.query('insert into workflow_task_history(id,task_id,occurred_at,action,to_state,actor_email,metadata) values($1,$2,$3,$4,$5,$6,$7)',[randomUUID(),id,at,'manual_task_created','action_required',self,{assignee:requested,priority,dueAt:due}]); await client.query('commit'); return {ok:true,id};
   }catch(error){await client.query('rollback');throw error;}finally{client.release();}}
