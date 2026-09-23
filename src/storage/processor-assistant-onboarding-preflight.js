@@ -1,0 +1,16 @@
+export const openAssistantTaskPredicate=`t.state not in ('completed','cancelled','not_applicable')`;
+
+/**
+ * A pg.Client is a single connection. These reads deliberately execute in order
+ * so the dry-run is warning-free and remains inside its caller's transaction.
+ */
+export async function loadProcessorAssistantOnboardingPreflight(client,{email,displayName,actorEmail}) {
+  const actorResult=await client.query(`select e.id,e.email,e.active,coalesce(array_agg(c.capability) filter(where c.capability is not null),'{}') capabilities from employees e left join employee_capabilities c on c.employee_id=e.id where lower(e.email)=lower($1) group by e.id,e.email,e.active`,[actorEmail]);
+  const employeeResult=await client.query(`select e.id,e.email,e.display_name "displayName",e.role,e.active,coalesce((select array_agg(c.capability) from employee_capabilities c where c.employee_id=e.id),'{}') capabilities from employees e where lower(e.email)=lower($1) for update`,[email]);
+  const ariveResult=await client.query(`select l.arive_display_loan_id "displayLoanId" from loans l left join lateral (select metadata from loan_stage_events where loan_id=l.id order by occurred_at desc,received_at desc,id desc limit 1) latest on true where l.processing_eligible_at is not null and l.current_stage not in ('LOAN_FUNDED','BROKER_CHECK_RECEIVED','COMMISSION_PAID','ADVERSE','SUSPENDED','CANCELLED','WITHDRAWN','DENIED') and lower(coalesce(latest.metadata->>'assistantEmail',''))=lower($1) order by l.arive_display_loan_id`,[email]);
+  const taskResult=await client.query(`select l.arive_display_loan_id "displayLoanId",t.id "taskId",t.task_type "taskType",t.state from workflow_tasks t join loans l on l.id=t.loan_id where t.owner_role='processor_assistant' and ${openAssistantTaskPredicate} and lower(coalesce(t.owner_email,''))=lower($1) order by l.arive_display_loan_id,t.id`,[email]);
+  const taskMismatchResult=await client.query(`select l.arive_display_loan_id "displayLoanId",t.id "taskId",t.owner_email "ownerEmail" from workflow_tasks t join loans l on l.id=t.loan_id where t.owner_role='processor_assistant' and ${openAssistantTaskPredicate} and lower(coalesce(t.owner_name,''))=lower($1) and lower(coalesce(t.owner_email,''))<>lower($2) order by l.arive_display_loan_id,t.id`,[displayName,email]);
+  const ariveMismatchResult=await client.query(`select l.arive_display_loan_id "displayLoanId",nullif(latest.metadata->>'assistantEmail','') "assistantEmail" from loans l left join lateral (select metadata from loan_stage_events where loan_id=l.id order by occurred_at desc,received_at desc,id desc limit 1) latest on true where l.processing_eligible_at is not null and l.current_stage not in ('LOAN_FUNDED','BROKER_CHECK_RECEIVED','COMMISSION_PAID','ADVERSE','SUSPENDED','CANCELLED','WITHDRAWN','DENIED') and lower(coalesce(latest.metadata->>'assistant',''))=lower($1) and lower(coalesce(latest.metadata->>'assistantEmail',''))<>lower($2) order by l.arive_display_loan_id`,[displayName,email]);
+  const nameConflictResult=await client.query(`select count(*)::int count from employees where lower(display_name)=lower($1) and lower(email)<>lower($2)`,[displayName,email]);
+  return {actorResult,employeeResult,ariveResult,taskResult,taskMismatchResult,ariveMismatchResult,nameConflictResult};
+}

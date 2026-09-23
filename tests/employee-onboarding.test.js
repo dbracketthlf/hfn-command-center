@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { processorAssistantOnboardingPlan } from '../src/domain/employee-onboarding.js';
+import { loadProcessorAssistantOnboardingPreflight, openAssistantTaskPredicate } from '../src/storage/processor-assistant-onboarding-preflight.js';
 
 const identity={email:'prince@hlfnetwork.com',displayName:'Prince Del Rosario'};
 
@@ -37,4 +38,12 @@ test('capability-driven repository paths have no hardcoded Prince or legacy Assi
   assert.match(source,/activeOperationalTeam/);
   assert.match(source,/resolveOperationalOwner/);
   assert.doesNotMatch(source,/Prince Del Rosario|Joshua Quintanilla|Sophia Gomez/);
+});
+
+test('onboarding preflight serializes all reads on one pg.Client and qualifies workflow task state',async()=>{
+  let active=0,maxActive=0;
+  const client={query:async()=>{active++;maxActive=Math.max(maxActive,active);await new Promise(resolve=>setTimeout(resolve,1));active--;return {rows:[]};}};
+  await loadProcessorAssistantOnboardingPreflight(client,{...identity,actorEmail:'admin@hlfnetwork.com'});
+  assert.equal(maxActive,1);
+  assert.match(openAssistantTaskPredicate,/^t\.state not in/);
 });
