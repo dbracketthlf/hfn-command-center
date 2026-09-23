@@ -2,12 +2,12 @@ import { performanceScore } from './performance.js';
 import { assistantWeights } from './rules.js';
 import { assistantMetricKeys, metricResult, overallResult, processorMetricKey, processorMetricKeys } from './kpi-metrics.js';
 
-const processorNames = ['Susan Vu', 'Elizabeth Martinez'];
-const assistantNames = ['Joshua Quintanilla', 'Sophia Gomez'];
 const measurableProcessorState = state => state === 'completed' || state === 'breached';
 
 /** Aggregates only borrower-safe, persisted operational rows; no demo records. */
-export function buildLiveDashboard({ counts, processorLoans, processorSlas, funded, assistantTasks, assistantSlas=[], attention }) {
+export function buildLiveDashboard({ counts, processorLoans, processorSlas, funded, assistantTasks, assistantSlas=[], attention, activeTeam={} }) {
+  const processorNames=activeTeam.processors ?? [...new Set([...processorLoans,...processorSlas,...funded].map(row=>row.processor).filter(name=>name&&name!=='Unassigned'))];
+  const assistantNames=activeTeam.assistants ?? [...new Set([...assistantTasks,...assistantSlas].map(row=>row.assistant).filter(name=>name&&name!=='Unassigned'))];
   const processors = processorNames.map(name => {
     const loans = processorLoans.filter(row => row.processor === name);
     const slas = processorSlas.filter(row => row.processor === name).map(row=>({...row,metricKey:processorMetricKey(row.metricKey)})).filter(row=>row.metricKey);
