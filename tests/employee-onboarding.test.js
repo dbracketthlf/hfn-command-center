@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { processorAssistantOnboardingPlan } from '../src/domain/employee-onboarding.js';
+import { processorAssistantOnboardingPlan, processorAssistantIdentityReconciliationPlan } from '../src/domain/employee-onboarding.js';
 import { loadProcessorAssistantOnboardingPreflight, openAssistantTaskPredicate } from '../src/storage/processor-assistant-onboarding-preflight.js';
 
 const identity={email:'prince@hlfnetwork.com',displayName:'Prince Del Rosario'};
@@ -21,6 +21,13 @@ test('Processor Assistant onboarding rejects conflicting identity, access, and e
   assert.throws(()=>processorAssistantOnboardingPlan({...identity,identityMismatches:[{kind:'open_task_owner_email_mismatch'}]}),/different Assistant identity/);
 });
 
+test('explicit Processor Assistant identity reconciliation preserves an existing ID while reducing a verified legacy Admin to Assistant-only',()=>{
+  const plan=processorAssistantIdentityReconciliationPlan({employeeId:'5e5b6592-97db-4a7e-9f98-18fc146dc677',email:identity.email,currentDisplayName:'Prince',displayName:identity.displayName,removeAdminCapability:true,existingEmployee:{id:'5e5b6592-97db-4a7e-9f98-18fc146dc677',email:identity.email,displayName:'Prince',role:'admin',active:true,capabilities:['admin']}});
+  assert.deepEqual(plan,{action:'reconcile_existing_employee',employeeId:'5e5b6592-97db-4a7e-9f98-18fc146dc677',email:identity.email,currentDisplayName:'Prince',displayName:identity.displayName,finalRole:'processor_assistant',finalActive:true,finalCapabilities:['processor_assistant'],rename:true,activate:false,removeAdminCapability:true,addProcessorAssistantCapability:true});
+  assert.throws(()=>processorAssistantIdentityReconciliationPlan({employeeId:'id',email:identity.email,currentDisplayName:'Prince',displayName:identity.displayName,existingEmployee:{id:'id',email:identity.email,displayName:'Prince',role:'admin',active:true,capabilities:['admin']}}),/remove-admin-capability/);
+  assert.throws(()=>processorAssistantIdentityReconciliationPlan({employeeId:'id',email:identity.email,currentDisplayName:'Prince',displayName:identity.displayName,removeAdminCapability:true,existingEmployee:{id:'id',email:identity.email,displayName:'Prince',role:'admin',active:true,capabilities:['admin','processor']}}),/Processor access/);
+});
+
 test('onboarding command is dry-run by default, uses strict operator TLS, and does not redistribute workflow work',async()=>{
   const source=await readFile(new URL('../scripts/onboard-processor-assistant.mjs',import.meta.url),'utf8');
   assert.match(source,/postgresTestClientOptions\(process\.env\.DATABASE_URL\)/);
@@ -31,6 +38,16 @@ test('onboarding command is dry-run by default, uses strict operator TLS, and do
   assert.match(source,/existing_employee_name_email_mismatch/);
   assert.doesNotMatch(source,/update workflow_tasks|insert into workflow_tasks|delete from workflow_tasks/i);
   assert.doesNotMatch(source,/operational_assignment_overrides/i);
+});
+
+test('explicit identity reconciliation requires acknowledgment, is dry-run by default, and never changes operational work',async()=>{
+  const source=await readFile(new URL('../scripts/reconcile-processor-assistant-identity.mjs',import.meta.url),'utf8');
+  assert.match(source,/--remove-admin-capability is required/);
+  assert.match(source,/const .*apply=process\.argv\.includes\('--apply'\)/);
+  assert.match(source,/if\(!apply\)\{await client\.query\('rollback'\)/);
+  assert.match(source,/delete from employee_capabilities where employee_id=\$1 and capability in \('admin','processor'\)/);
+  assert.match(source,/role='processor_assistant'/);
+  assert.doesNotMatch(source,/update workflow_tasks|insert into workflow_tasks|delete from workflow_tasks|update loans|insert into loan_stage_events|sla_measurements|assistant_tasks/i);
 });
 
 test('capability-driven repository paths have no hardcoded Prince or legacy Assistant roster',async()=>{
