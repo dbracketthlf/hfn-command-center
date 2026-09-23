@@ -5,7 +5,7 @@ import { PostgresAriveRepository } from '../src/storage/postgres-arive.js';
 const processor={email:'processor@hfn.test',role:'processor',displayName:'Processor'};
 
 class ReviewExecutor {
-  constructor({withResubmit=true}={}){this.task={id:'review-1',loan_id:'loan-1',task_type:'review_title',owner_role:'processor',owner_email:processor.email,state:'action_required',metadata:{}};this.resubmit=withResubmit?{id:'resubmit-1',workflow_cycle:2,state:'action_required'}:null;this.history=[];}
+  constructor({withResubmit=true}={}){this.task={id:'review-1',loan_id:'loan-1',task_type:'review_title',owner_role:'processor',owner_email:processor.email,state:'action_required',metadata:{}};this.resubmit=withResubmit?{id:'resubmit-1',workflow_cycle:2,state:'action_required'}:null;this.history=[];this.package={id:'package-1',loan_id:'loan-1',workflow_cycle:2,state:'OPEN'};this.packageItems=[];}
   async connect(){return this;} release(){}
   async query(sql,args=[]){const q=sql.toLowerCase();
     if(['begin','commit','rollback'].includes(q))return {rows:[],rowCount:0};
@@ -13,6 +13,9 @@ class ReviewExecutor {
     if(q.startsWith("update workflow_tasks set state='completed'")){if(['completed','cancelled','not_applicable'].includes(this.task.state))return {rows:[],rowCount:0};this.task.state='completed';this.task.completed_at=args[1];return {rows:[{id:this.task.id}],rowCount:1};}
     if(q.startsWith("update workflow_tasks set state='action_required',waiting_on='processor_review_issue'")){if(['completed','cancelled','not_applicable'].includes(this.task.state))return {rows:[],rowCount:0};this.task.state='action_required';this.task.waiting_on='processor_review_issue';this.task.metadata={...this.task.metadata,reviewOutcome:'issue_follow_up_required'};return {rows:[{id:this.task.id}],rowCount:1};}
     if(q.startsWith("select id,workflow_cycle from workflow_tasks where loan_id="))return {rows:this.resubmit?[this.resubmit]:[],rowCount:this.resubmit?1:0};
+    if(q.startsWith('insert into underwriting_submission_packages'))return {rows:[],rowCount:0};
+    if(q.startsWith('select id,loan_id,workflow_cycle,state,created_at,submitted_at'))return {rows:[this.package],rowCount:1};
+    if(q.startsWith('insert into underwriting_submission_package_items')){this.packageItems.push({packageId:args[1],itemType:args[2],sourceTaskId:args[3]});return {rows:[{id:args[0]}],rowCount:1};}
     if(q.startsWith('insert into workflow_task_history')){this.history.push({taskId:args[1],action:args[3],fromState:args[4],toState:args[5],actorEmail:args[6],note:args[7],metadata:args[8]});return {rows:[],rowCount:1};}
     throw new Error(`Unexpected SQL: ${sql}`);
   }

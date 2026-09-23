@@ -5,6 +5,7 @@ import { Client } from 'pg';
 import { postgresTestClientOptions } from '../src/config/runtime.js';
 import { fundingAggregateSql } from '../src/storage/funding-aggregate.js';
 import { PostgresAriveRepository } from '../src/storage/postgres-arive.js';
+import { readFile } from 'node:fs/promises';
 
 const url=process.env.TEST_DATABASE_URL;
 test('PostgreSQL funding aggregate deduplicates live funding and corrections',{skip:!url},async()=>{
@@ -43,5 +44,20 @@ test('PostgreSQL checklist mutation stores timestamptz values, toggles safely, a
     await repo.mutateWorkflowChecklist({employee,taskId,checklistItemId:settlementId,checklistState:'action_required',at});rows=(await client.query('select state,completed_at,completed_by_email from workflow_task_checklist_items where id=$1',[settlementId])).rows;assert.equal(rows[0].state,'action_required');assert.equal(rows[0].completed_at,null);assert.equal(rows[0].completed_by_email,null);
     await assert.rejects(repo.mutateWorkflowChecklist({employee,taskId,checklistItemId:settlementId,checklistState:'not_applicable',at}),/required/);
     await repo.mutateWorkflowChecklist({employee,taskId,checklistItemId:settlementId,checklistState:'completed',at});await repo.mutateWorkflowChecklist({employee,taskId,checklistItemId:floodId,checklistState:'not_applicable',at});const task=(await client.query('select state,completed_at from workflow_tasks where id=$1',[taskId])).rows[0];assert.equal(task.state,'completed');assert.equal(task.completed_at.toISOString(),at);
+  }finally{await client.query(`drop schema if exists ${schema} cascade`).catch(()=>{});await client.end();}
+});
+
+test('PostgreSQL underwriting submission packages enforce one cycle, strict item types, and immutable frozen membership',{skip:!url},async()=>{
+  const client=new Client(postgresTestClientOptions(url)),schema=`hfn_submission_package_${randomUUID().replaceAll('-','')}`,loanId=randomUUID(),taskId=randomUUID(),invalidTaskId=randomUUID(),packageId=randomUUID();
+  await client.connect();
+  try{
+    await client.query(`create schema ${schema};set search_path to ${schema};create table loans(id uuid primary key);create table workflow_tasks(id uuid primary key)`);
+    await client.query(await readFile(new URL('../db/020_underwriting_submission_packages.sql',import.meta.url),'utf8'));
+    await client.query('insert into loans values($1)',[loanId]);await client.query('insert into workflow_tasks values($1),($2)',[taskId,invalidTaskId]);
+    await client.query("insert into underwriting_submission_packages(id,loan_id,workflow_cycle,state,created_at) values($1,$2,1,'OPEN',now())",[packageId,loanId]);
+    await client.query("insert into underwriting_submission_package_items(id,package_id,item_type,source_task_id,source_action,ready_at) values($1,$2,'title',$3,'review_add_to_next_uw_submission',now())",[randomUUID(),packageId,taskId]);
+    await assert.rejects(client.query("insert into underwriting_submission_package_items(id,package_id,item_type,source_task_id,source_action,ready_at) values($1,$2,'other',$3,'manual',now())",[randomUUID(),packageId,invalidTaskId]),/item_type|check/i);
+    await client.query("update underwriting_submission_packages set state='SUBMITTED',submitted_at=now(),submitted_by_email='processor@hfn.test' where id=$1",[packageId]);
+    await assert.rejects(client.query("insert into underwriting_submission_package_items(id,package_id,item_type,source_task_id,source_action,ready_at) values($1,$2,'appraisal',$3,'manual',now())",[randomUUID(),packageId,invalidTaskId]),/non-open|underwriting/i);
   }finally{await client.query(`drop schema if exists ${schema} cascade`).catch(()=>{});await client.end();}
 });
