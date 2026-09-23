@@ -31,3 +31,14 @@ export function postgresOperatorPoolOptions(config) {
   if(!config?.databaseUrl)throw new Error('DATABASE_URL is required');
   return postgresTestClientOptions(config.databaseUrl);
 }
+
+/**
+ * Migrations normally run beside the service against Render's internal URL.
+ * An operator may explicitly opt into strict external TLS when running the
+ * migration command from outside Render; never infer that from NODE_ENV/URL.
+ */
+export function postgresMigrationPoolOptions(config,{external=false}={}) {
+  return external
+    ? postgresOperatorPoolOptions(config)
+    : postgresPoolOptions(config);
+}
