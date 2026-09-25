@@ -14,7 +14,7 @@ class StateClient {
     if(query.startsWith('insert into loans')){if(!this.loans.has(args[1]))this.loans.set(args[1],{id:args[0],currentStage:'UNKNOWN',effectiveAt:null,eventId:null});return {rowCount:1,rows:[]};}
     if(query.startsWith('select id,current_stage')){const row=this.loans.get(args[0]);return {rows:[{id:row.id,current_stage:row.currentStage,current_stage_effective_at:row.effectiveAt,current_stage_event_id:row.eventId}]};}
     if(query.startsWith('select operational_snapshot')){const row=this.loanById(args[0]);return {rows:[{operational_snapshot:this.snapshots.get(args[0])??{},operational_snapshot_effective_at:row.snapshotAt??null}]};}
-    if(query.startsWith('update loans set operational_snapshot')){const row=this.loanById(args[2]);this.snapshots.set(args[2],args[0]);row.snapshotAt=args[1];return {rowCount:1,rows:[]};}
+    if(query.startsWith('update loans set operational_snapshot')){const row=this.loanById(args[0]);this.snapshots.set(args[0],args[1]);row.snapshotAt=args[2];return {rowCount:1,rows:[]};}
     if(query.includes('operational_assignment_overrides')||query.includes('employee_capabilities'))return {rowCount:0,rows:[]};
     if(query.startsWith('insert into loan_stage_events')){this.events.push({id:args[0],type:args[2],occurredAt:args[3]});return {rowCount:1,rows:[{id:args[0]}]};}
     if(query.startsWith('update loans set arive_display_loan_id')){const row=this.loanById(args[0]);row.currentStage=args[6];row.effectiveAt=args[7];row.eventId=args[8];return {rowCount:1,rows:[]};}
